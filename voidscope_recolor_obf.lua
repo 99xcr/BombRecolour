@@ -9,7 +9,7 @@ do
 	local FONT = Enum.Font.FredokaOne -- bubbly font
 	local TITLE = "VESTA RECOLOR"
 	local MIN_TIME = 2.5   -- shortest time the screen shows (seconds)
-	local MAX_TIME = 10    -- gives up waiting after this long and fades anyway
+	local MAX_TIME = 12    -- gives up waiting after this long and fades anyway
 
 	local old = genv.VestaLoaderGui
 	if old then pcall(function() old:Destroy() end) end
@@ -1865,6 +1865,75 @@ function SkinKit.prebuild(tool, onlyKey)
 	end
 end
 
+-- GRAPHICS WARM-UP: shows every skin on a FULL-SIZE hidden copy of each gun mesh, in front of the camera (the loading
+-- screen covers it), so the graphics card already holds the full-resolution picture. Clicking a skin later is a pure swap.
+SkinKit.warmed = {}
+SkinKit.warming = 0
+function SkinKit.warm(tool)
+	SkinKit.warming += 1
+	local ok, err = pcall(function()
+		local waited = 0
+		while waited < 30 do
+			local pending = false
+			for key in pairs(SKIN_TEXTURES) do
+				if SkinKit.img[key] == nil then pending = true end
+			end
+			if not pending then break end
+			task.wait(0.05)
+			waited += 0.05
+		end
+		local cam = Workspace.CurrentCamera
+		if not cam then return end
+		local dummies, seen = {}, {}
+		for _, d in ipairs(tool:GetDescendants()) do
+			if d:IsA("MeshPart") then
+				local okt, tex = pcall(function() return d.TextureID end)
+				local okm, mesh = pcall(function() return d.MeshId end)
+				if okt and okm and type(tex) == "string" and tex ~= "" then
+					local id = tex .. "|" .. tostring(mesh)
+					if not seen[id] and not SkinKit.warmed[id] then
+						seen[id] = true
+						SkinKit.warmed[id] = true
+						local made, dm = pcall(function()
+							local c = d:Clone()
+							for _, ch in ipairs(c:GetChildren()) do ch:Destroy() end
+							c.Anchored = true
+							c.CanCollide = false
+							c.CanQuery = false
+							c.CanTouch = false
+							c.Transparency = 0
+							c.Parent = cam
+							return c
+						end)
+						if made and dm then table.insert(dummies, dm) end
+					end
+				end
+			end
+		end
+		if #dummies == 0 then return end
+		for key in pairs(SKIN_TEXTURES) do
+			if SkinKit.img[key] then
+				local sas = {}
+				for i, dm in ipairs(dummies) do
+					local sa = Instance.new("SurfaceAppearance")
+					if SkinKit.fill(sa, key) then
+						sa.Parent = dm
+						table.insert(sas, sa)
+					else
+						sa:Destroy()
+					end
+					dm.CFrame = cam.CFrame * CFrame.new(0, 0, -(4 + i * 0.5))
+				end
+				task.wait(0.1)
+				for _, sa in ipairs(sas) do sa:Destroy() end
+			end
+		end
+		for _, dm in ipairs(dummies) do dm:Destroy() end
+	end)
+	SkinKit.warming -= 1
+	if not ok then warn("[Voidscope Recolor] warm-up skipped: " .. tostring(err)) end
+end
+
 -- start downloading every skin picture RIGHT NOW (before the menu is even built), so they are ready by the time you click
 for key in pairs(SKIN_TEXTURES) do SkinKit.load(key) end
 
@@ -2780,7 +2849,8 @@ local function hookGun(tool)
 	hooked[tool] = true
 	print("[Voidscope Recolor] found gun: " .. tool:GetFullName())
 	task.delay(PREBUILD_DELAY, prebuildTextures, tool) -- builds the backup looks quietly in the background
-	task.spawn(SkinKit.prebuild, tool)                 -- makes every downloaded skin ready on every gun part right now (instant switching)
+	task.spawn(SkinKit.prebuild, tool)
+	task.spawn(SkinKit.warm, tool)                 -- makes every downloaded skin ready on every gun part right now (instant switching)
 	local effects = paintGun(tool)
 	if selected then
 		setGunStatus("Gun: found, " .. effects .. " beam part(s)")
@@ -4020,50 +4090,19 @@ task.spawn(function()
 		task.wait(0.05)
 		waited += 0.05
 	end
-	env.VestaLoadDone = true -- loading screen stays up until every skin is in memory
-	-- wait (up to a minute) for the gun, so the graphics warm-up below always happens
+	-- the loading screen stays up until the full-size warm-up has finished (or the 12s cap)
 	local gunWait = 0
-	while not next(hooked) and gunWait < 60 do
+	while not next(hooked) and gunWait < 6 do
 		task.wait(0.25)
 		gunWait += 0.25
 	end
-	for key in pairs(SKIN_TEXTURES) do
-		if SkinKit.img[key] == false then
-			warn("[Voidscope Recolor] the '" .. key .. "' picture couldn't be loaded. Save it as '" .. key .. ".png' in your executor's workspace folder.")
-		end
+	task.wait(0.2)
+	local warmWait = 0
+	while SkinKit.warming > 0 and warmWait < 10 do
+		task.wait(0.1)
+		warmWait += 0.1
 	end
-	-- show each skin for a moment on a tiny hidden copy of a gun part so the graphics card has them ready
-	local src
-	for tool in pairs(hooked) do
-		if tool.Parent then
-			for _, d in ipairs(tool:GetDescendants()) do
-				local okt, tex = pcall(function() return d:IsA("MeshPart") and d.TextureID or "" end)
-				if okt and tex ~= "" and (not src or d.Size.Magnitude > src.Size.Magnitude) then src = d end
-			end
-		end
-	end
-	if not src then return end
-	pcall(function()
-		local cam = Workspace.CurrentCamera
-		local dummy = src:Clone()
-		for _, c in ipairs(dummy:GetChildren()) do c:Destroy() end
-		dummy.Anchored = true
-		dummy.CanCollide = false
-		dummy.CanQuery = false
-		dummy.CanTouch = false
-		dummy.Size = src.Size * 0.15
-		dummy.Parent = cam
-		for key in pairs(SKIN_TEXTURES) do
-			if cam then dummy.CFrame = cam.CFrame * CFrame.new(0, 0, -3) end
-			local sa = Instance.new("SurfaceAppearance")
-			if SkinKit.fill(sa, key) then
-				sa.Parent = dummy
-				task.wait(0.05)
-			end
-			sa:Destroy()
-		end
-		dummy:Destroy()
-	end)
+	env.VestaLoadDone = true
 end)
 
 local pre = env.VoidscopeColor
