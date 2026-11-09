@@ -1779,17 +1779,25 @@ function SkinKit.load(key)
 	if SkinKit.img[key] ~= nil or SkinKit.loading[key] then return end
 	SkinKit.loading[key] = true
 	task.spawn(function()
-		-- light version: no big editable images in memory, the picture is just preloaded so it is ready to swap in
+		-- the picture is held IN MEMORY as an image, so showing it later needs no loading at all
 		local content = resolveSkin(key)
 		local result = false
 		if content then
-			result = content
-			pcall(function()
-				local probe = Instance.new("SurfaceAppearance")
-				probe.ColorMap = content
-				ContentProvider:PreloadAsync({ probe })
-				probe:Destroy()
+			local ok, ei = pcall(function()
+				return AssetService:CreateEditableImageAsync(Content.fromUri(content))
 			end)
+			if ok and ei then
+				table.insert(KEEP, ei)
+				result = ei
+			else
+				result = content -- couldn't hold it in memory: plain picture link instead
+				pcall(function()
+					local probe = Instance.new("SurfaceAppearance")
+					probe.ColorMap = content
+					ContentProvider:PreloadAsync({ probe })
+					probe:Destroy()
+				end)
+			end
 		end
 		SkinKit.img[key] = result
 		SkinKit.loading[key] = nil
@@ -1800,7 +1808,11 @@ end
 -- puts the picture into a SurfaceAppearance, returns what it used (or nil)
 function SkinKit.fill(sa, key)
 	local content = SkinKit.img[key] or resolveSkin(key)
-	if content then
+	if content and type(content) ~= "string" then
+		if not pcall(function() sa.ColorMapContent = Content.fromObject(content) end) then return nil end
+		pcall(function() sa.Color = Color3.new(1, 1, 1) end)
+		return content
+	elseif content then
 		if not pcall(function() sa.ColorMap = content end) then return nil end
 		pcall(function() sa.Color = Color3.new(1, 1, 1) end)
 		return content
@@ -1935,7 +1947,12 @@ function SkinKit.warm(tool)
 end
 
 -- start downloading every skin picture RIGHT NOW (before the menu is even built), so they are ready by the time you click
-for key in pairs(SKIN_TEXTURES) do SkinKit.load(key) end
+task.spawn(function()
+	for key in pairs(SKIN_TEXTURES) do
+		SkinKit.load(key)
+		task.wait(0.05) -- spaced out so the game never stutters
+	end
+end)
 
 local tintMesh
 local jobs = {}
