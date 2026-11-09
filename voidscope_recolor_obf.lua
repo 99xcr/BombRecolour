@@ -9,7 +9,7 @@ do
 	local FONT = Enum.Font.FredokaOne -- bubbly font
 	local TITLE = "VESTA RECOLOR"
 	local MIN_TIME = 2.5   -- shortest time the screen shows (seconds)
-	local MAX_TIME = 5     -- gives up waiting after this long and fades anyway
+	local MAX_TIME = 10    -- gives up waiting after this long and fades anyway
 
 	local old = genv.VestaLoaderGui
 	if old then pcall(function() old:Destroy() end) end
@@ -306,7 +306,7 @@ local COLORS = {
 	{ name = "Pink",       color = Color3.fromRGB(255, 190, 215), mode = "texture", texStyle = "pink", skin = "pink" },
 	{ name = "White",      color = Color3.fromRGB(238, 238, 244), mode = "texture", texStyle = "white", skin = "white" },
 	{ name = "Rainbow",    color = Color3.fromRGB(255, 60, 200), mode = "texture", texStyle = "rainbow", skin = "rainbow", gradient = true, rainbowFx = true },
-	{ name = "Colourscope", color = Color3.fromRGB(255, 90, 210), mode = "texture", texStyle = "rainbow", skin = "colourscope", gradient = true, rainbowFx = true },
+	{ name = "Colourscope", color = Color3.fromRGB(255, 90, 210), mode = "texture", texStyle = "rainbow", skin = "colourscope", gradient = true, rainbowFx = true, noSuffix = true },
 	{ name = "Gold",       color = Color3.fromRGB(255, 200, 40), mode = "texture", texStyle = "gold", skin = "gold", reflectance = 0.45,
 		btnGradient = GOLD_SEQ, effectSeq = GOLD_SEQ },
 	{ name = "Diamond",    color = Color3.fromRGB(185, 242, 255), mode = "texture", texStyle = "diamond", skin = "diamond", reflectance = 0.2,
@@ -1865,6 +1865,9 @@ function SkinKit.prebuild(tool, onlyKey)
 	end
 end
 
+-- start downloading every skin picture RIGHT NOW (before the menu is even built), so they are ready by the time you click
+for key in pairs(SKIN_TEXTURES) do SkinKit.load(key) end
+
 local tintMesh
 local jobs = {}
 local sourceFailed = {} -- texture id -> { at, why }: textures the game wouldn't let us read (don't retry every click)
@@ -3422,7 +3425,7 @@ local function buildGui()
 		for i, entry in ipairs(list_) do
 			local shown = colorsClose(entry.color, Color3.new(0, 0, 0)) and Color3.fromRGB(40, 40, 46) or entry.color
 			local grad = entry.btnGradient or (entry.gradient and RAINBOW_SEQUENCE) or nil
-			local bg, _, holder = makeGlassButton(scroll, i, string.upper(entry.name) .. suffix, shown, grad,
+			local bg, _, holder = makeGlassButton(scroll, i, string.upper(entry.name) .. (entry.noSuffix and "" or suffix), shown, grad,
 				function() onPick(entry) end)
 			holder.Size = UDim2.new(1, 0, 0, 34)
 			store[entry.name] = bg
@@ -4003,8 +4006,10 @@ task.spawn(function()
 			setNote("")
 		end
 	end
-	-- every skin downloads at the same time
-	for key in pairs(SKIN_TEXTURES) do SkinKit.load(key) end
+	-- catch up on any skin that finished before this point
+	for key in pairs(SKIN_TEXTURES) do
+		if SkinKit.img[key] ~= nil then pcall(SkinKit.onReady, key) end
+	end
 	local waited = 0
 	while waited < 30 do
 		local pending = false
@@ -4012,8 +4017,15 @@ task.spawn(function()
 			if SkinKit.img[key] == nil then pending = true end
 		end
 		if not pending then break end
-		task.wait(0.1)
-		waited += 0.1
+		task.wait(0.05)
+		waited += 0.05
+	end
+	env.VestaLoadDone = true -- loading screen stays up until every skin is in memory
+	-- wait (up to a minute) for the gun, so the graphics warm-up below always happens
+	local gunWait = 0
+	while not next(hooked) and gunWait < 60 do
+		task.wait(0.25)
+		gunWait += 0.25
 	end
 	for key in pairs(SKIN_TEXTURES) do
 		if SkinKit.img[key] == false then
@@ -4046,7 +4058,7 @@ task.spawn(function()
 			local sa = Instance.new("SurfaceAppearance")
 			if SkinKit.fill(sa, key) then
 				sa.Parent = dummy
-				task.wait(0.1)
+				task.wait(0.05)
 			end
 			sa:Destroy()
 		end
@@ -4081,4 +4093,3 @@ env.VoidscopeRecolorCleanup = function()
 end
 
 print("[Voidscope Recolor] loaded")
-env.VestaLoadDone = true -- tells the loading screen it can fade out
