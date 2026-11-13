@@ -209,8 +209,8 @@ local TRAIL_END = "back"     -- "back" = comes off the very back of the gun, "fr
 local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun, set this to true
 local TRAIL_DROP = 1.4       -- how far to move the trail DOWN from where it is now (studs). Bigger = lower, 0 = old position
 local TRAIL_BACK = 0.7       -- how far to move the trail BACKWARDS (studs, away from where you aim). Bigger = further back, 0 = no change
-local TRAIL_DROP_GINGER = 0.9  -- same as TRAIL_DROP but only for the gingerscope (smaller = higher up)
-local TRAIL_BACK_GINGER = 0.15 -- same as TRAIL_BACK but only for the gingerscope (smaller = closer to the gun)
+local TRAIL_DROP_GINGER = 0.5  -- same as TRAIL_DROP but only for the gingerscope (smaller = higher up)
+local TRAIL_BACK_GINGER = 0.17 -- same as TRAIL_BACK but only for the gingerscope (smaller = closer to the gun)
 
 -- EDITABLE IMAGE SPEED SETTINGS (only used by the built-in backup textures, see SKIN_TEXTURES below)
 local MAX_TEX = 512              -- sharper; built once in the background so it doesn't hurt switching (384 = lighter)
@@ -3254,7 +3254,13 @@ local function parseHex(s)
 end
 
 -- menu theme colours (changed by the UI tab)
-local UI = { accent = BUTTON_SELECTED, on = Color3.fromRGB(0, 105, 190) }
+local UI = {
+	accent = BUTTON_SELECTED,
+	on = Color3.fromRGB(0, 105, 190),     -- toggle buttons when ON
+	off = Color3.fromRGB(78, 80, 92),     -- toggle buttons when OFF
+	btn = Color3.fromRGB(84, 84, 100),    -- feature buttons (Reset, Glass, tabs, Apply)
+	feature = {},                         -- every feature button that follows the UI colour
+}
 
 local function setOutline(bg, on)
 	local stroke = bg:FindFirstChildOfClass("UIStroke")
@@ -3269,11 +3275,11 @@ local function updateStatus()
 	for _, t in ipairs(toggleUI) do
 		if t.glassTb then t.glassTb.Text = glassOverlay and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF" end
 		if t.glassBg then
-			t.glassBg.BackgroundColor3 = glassOverlay and UI.on or Color3.fromRGB(78, 80, 92)
+			t.glassBg.BackgroundColor3 = glassOverlay and UI.on or UI.off
 		end
 		if t.trailTb then t.trailTb.Text = trailOn and "TRAIL: ON" or "TRAIL: OFF" end
 		if t.trailBg then
-			t.trailBg.BackgroundColor3 = trailOn and UI.on or Color3.fromRGB(78, 80, 92)
+			t.trailBg.BackgroundColor3 = trailOn and UI.on or UI.off
 		end
 	end
 	if statusLabel then
@@ -4023,7 +4029,8 @@ local function buildGui()
 			if enterPressed then applyHex() end
 		end)
 		do
-			local _, _, holder = makeGlassButton(hexRow, 3, "APPLY", Color3.fromRGB(0, 105, 190), nil, applyHex)
+			local abg, _, holder = makeGlassButton(hexRow, 3, "APPLY", Color3.fromRGB(0, 105, 190), nil, applyHex)
+			table.insert(UI.feature, abg)
 			holder.Size = UDim2.new(0, 70, 1, 0)
 		end
 		refresh(false)
@@ -4068,6 +4075,7 @@ local function buildGui()
 			function() applyColor(GLASS) end, 0.15)
 		holder.Size = UDim2.new(0.5, -3, 1, 0)
 		buttons[GLASS.name] = bg
+		table.insert(UI.feature, bg)
 		local bg2, _, holder2 = makeGlassButton(row2, 2, string.upper(RAINBOW.name), Color3.new(1, 1, 1), RAINBOW_SEQUENCE,
 			function() applyColor(RAINBOW) end)
 		holder2.Size = UDim2.new(0.5, -3, 1, 0)
@@ -4076,7 +4084,8 @@ local function buildGui()
 
 	local row3 = featureRow(scopesPage, scopesNext)
 	do
-		local _, _, holder = makeGlassButton(row3, 1, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), nil, resetColor)
+		local rbg, _, holder = makeGlassButton(row3, 1, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), nil, resetColor)
+		table.insert(UI.feature, rbg)
 		holder.Size = UDim2.new(1, 0, 1, 0)
 	end
 
@@ -4124,6 +4133,7 @@ local function buildGui()
 				function() applyColor(GINGER.glass) end, 0.15)
 			holder.Size = UDim2.new(0.5, -3, 1, 0)
 			buttons[GINGER.glass.name] = bg
+			table.insert(UI.feature, bg)
 			local bg2, _, holder2 = makeGlassButton(grow2, 2, "CHROMA", Color3.new(1, 1, 1), RAINBOW_SEQUENCE,
 				function() applyColor(GINGER.chroma) end)
 			holder2.Size = UDim2.new(0.5, -3, 1, 0)
@@ -4132,7 +4142,8 @@ local function buildGui()
 
 		local grow3 = featureRow(gingerPage, gingerNext)
 		do
-			local _, _, holder = makeGlassButton(grow3, 1, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), nil, resetColor)
+			local rbg, _, holder = makeGlassButton(grow3, 1, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), nil, resetColor)
+			table.insert(UI.feature, rbg)
 			holder.Size = UDim2.new(1, 0, 1, 0)
 		end
 
@@ -4174,22 +4185,30 @@ local function buildGui()
 		-- look = "black" | "galaxy" | Color3
 		local function applyTheme(look, name)
 			local seq, accent, onColor = METAL_FRAME, Color3.fromRGB(235, 235, 245), Color3.fromRGB(70, 72, 86)
+			local btnColor, offColor = Color3.fromRGB(84, 84, 100), Color3.fromRGB(78, 80, 92)
 			stars.Visible = false
 			if look == "galaxy" then
 				seq = GALAXY_FRAME
 				accent = Color3.fromRGB(175, 115, 255)
 				onColor = Color3.fromRGB(95, 50, 190)
+				btnColor, offColor = Color3.fromRGB(88, 56, 160), Color3.fromRGB(62, 44, 110)
 				stars.Visible = true
 			elseif typeof(look) == "Color3" then
 				local h, s, v = Color3.toHSV(look)
-				if s < 0.12 then -- white / grey
+				if v < 0.12 then -- black (hex #000000 or the picker dragged to the bottom)
+					seq = METAL_FRAME
+					accent = Color3.fromRGB(235, 235, 245)
+					onColor = Color3.fromRGB(70, 72, 86)
+				elseif s < 0.12 then -- white / grey
 					seq = tintedFrame(Color3.fromHSV(0, 0, 1), 3.2 * math.max(v, 0.35))
 					accent = Color3.new(1, 1, 1)
 					onColor = Color3.fromRGB(120, 122, 136)
+					btnColor, offColor = Color3.fromRGB(160, 162, 176), Color3.fromRGB(120, 122, 136)
 				else
 					seq = tintedFrame(look, 2)
 					accent = Color3.fromHSV(h, math.min(s, 0.75), 1)
 					onColor = Color3.fromHSV(h, s, 0.7)
+					btnColor, offColor = Color3.fromHSV(h, s * 0.8, 0.65), Color3.fromHSV(h, s * 0.5, 0.45)
 				end
 			end
 			glassSheen.Color = seq
@@ -4199,6 +4218,11 @@ local function buildGui()
 			sideStroke.Transparency = 0.45
 			UI.accent = accent
 			UI.on = onColor
+			UI.off = offColor
+			UI.btn = btnColor
+			for _, fb in ipairs(UI.feature) do
+				if fb.Parent then fb.BackgroundColor3 = btnColor end
+			end
 			markUi(name)
 			updateStatus()
 			setNote("")
@@ -4302,7 +4326,7 @@ local function buildGui()
 	local tabDefs = {
 		{ "scopes", "SCOPES" },
 		{ "gingerscope", "GINGERSCOPE" },
-		{ "ui", "UI" },
+		{ "ui", "UI COLOR" },
 	}
 	for i, def in ipairs(tabDefs) do
 		local key = def[1]
@@ -4312,6 +4336,7 @@ local function buildGui()
 		holder.Size = UDim2.new(1, 0, 0, 44)
 		tb.TextWrapped = true
 		tabBgs[key] = bg
+		table.insert(UI.feature, bg)
 	end
 	showTab("scopes")
 
