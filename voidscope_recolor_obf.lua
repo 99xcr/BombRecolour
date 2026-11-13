@@ -364,6 +364,7 @@ GINGER.colors = {
 	{ name = "Orange Gingerscope",  color = Color3.fromRGB(255, 128, 0),   skin = "g_orange",  ginger = true, noSuffix = true },
 	{ name = "Yellow Gingerscope",  color = Color3.fromRGB(255, 255, 0),   skin = "g_yellow",  ginger = true, noSuffix = true },
 	{ name = "Green Gingerscope",   color = Color3.fromRGB(0, 255, 0),     skin = "g_green",   ginger = true, noSuffix = true },
+	{ name = "Black Gingerscope",   color = Color3.fromRGB(0, 0, 0),                           ginger = true, noSuffix = true },
 	{ name = "Blue Gingerscope",    color = Color3.fromRGB(0, 100, 255),   skin = "g_blue",    ginger = true, noSuffix = true },
 	{ name = "Purple Gingerscope",  color = Color3.fromRGB(160, 32, 240),  skin = "g_purple",  ginger = true, noSuffix = true },
 	{ name = "Pink Gingerscope",    color = Color3.fromRGB(255, 190, 215), skin = "g_pink",    ginger = true, noSuffix = true },
@@ -386,7 +387,7 @@ end
 function GINGER.fitsName(entry, name)
 	if not entry then return false end
 	local g = GINGER.isName(name)
-	if entry.ginger then return g or not GINGER.seen end
+	if entry.ginger then return g end -- strict: gingerscope looks ONLY go on the gingerscope
 	return not g
 end
 function GINGER.fitsInst(entry, inst)
@@ -397,12 +398,12 @@ function GINGER.fitsInst(entry, inst)
 end
 function GINGER.fitsTarget(entry, target)
 	local tool = target:IsA("Tool") and target or target:FindFirstAncestorOfClass("Tool")
-	return GINGER.fitsName(entry, (tool or target).Name)
+	return GINGER.targetIsGinger(target) == (entry.ginger == true)
 end
 -- does the skin picture `key` belong on this tool? (so each gun only prepares its own pictures)
 function GINGER.keyFitsTool(key, tool)
 	local toolG = GINGER.isName(tool.Name)
-	if string.sub(key, 1, 2) == "g_" then return toolG or not GINGER.seen end
+	if string.sub(key, 1, 2) == "g_" then return toolG end
 	return not toolG
 end
 
@@ -2350,7 +2351,9 @@ local function findTip(allParts, gripPos, useAim)
 	if #parts == 0 then parts = allParts end
 	if #parts == 0 then return nil end
 
-	local markerPart, markerPos = findMuzzle(allParts)
+	-- the gingerscope's trail always comes off the back of the gun, so its muzzle marker (the front) is ignored
+	local markerPart, markerPos
+	if not (selected and selected.ginger) then markerPart, markerPos = findMuzzle(allParts) end
 	if markerPart then
 		return markerPart, markerPos, Vector3.new(TRAIL_WIDTH / 2, 0, 0), "the gun's muzzle point"
 	end
@@ -2736,6 +2739,40 @@ local function gunAssetIds()
 		end
 	end
 	return ids
+end
+
+-- is the hip gun (the copy on your hip) a gingerscope? Goes by its name, then by whether it uses the gingerscope's mesh
+local targetKinds = setmetatable({}, { __mode = "k" })
+function GINGER.targetIsGinger(target)
+	local cached = targetKinds[target]
+	if cached ~= nil then return cached end
+	local result = false
+	local tool = target:IsA("Tool") and target or target:FindFirstAncestorOfClass("Tool")
+	if tool then
+		result = GINGER.isName(tool.Name)
+	elseif GINGER.isName(target.Name) then
+		result = true
+	else
+		local ids = {}
+		for t in pairs(hooked) do
+			if GINGER.isName(t.Name) then
+				for _, d in ipairs(t:GetDescendants()) do
+					if d:IsA("MeshPart") then
+						local okm, mesh = pcall(function() return d.MeshId end)
+						if okm and mesh ~= "" then ids[mesh] = true end
+					end
+				end
+			end
+		end
+		for _, d in ipairs(partsUnder(target)) do
+			if d:IsA("MeshPart") then
+				local okm, mesh = pcall(function() return d.MeshId end)
+				if okm and mesh ~= "" and ids[mesh] then result = true break end
+			end
+		end
+	end
+	targetKinds[target] = result
+	return result
 end
 
 local function hipTarget(char)
@@ -3981,9 +4018,6 @@ local function buildGui()
 	sectionLabel(scopesPage, scopesNext, "SCOPES")
 	colorScroll(scopesPage, scopesNext, " SCOPE", applyColor, buttons, COLORS)
 
-	buildPicker(scopesPage, scopesNext, function(c)
-		applyColor({ name = "Custom", color = c })
-	end)
 
 	-- PAGE 2: GINGERSCOPE (same layout as the scopes page, but every skin here is a gingerscope picture)
 	do
@@ -4040,9 +4074,6 @@ local function buildGui()
 		sectionLabel(gingerPage, gingerNext, "GINGERSCOPE")
 		colorScroll(gingerPage, gingerNext, "", applyColor, buttons, GINGER.colors)
 
-		buildPicker(gingerPage, gingerNext, function(c)
-			applyColor({ name = "Custom Gingerscope", color = c, ginger = true })
-		end)
 	end
 
 	-- shared status lines + note + footer + credit (below the page)
