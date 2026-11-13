@@ -3,6 +3,7 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 repeat task.wait() until game:GetService("Players").LocalPlayer
 
 -- VESTA LOADING SCREEN (black screen, bubbly title, small "loading" at the bottom)
+-- strictly black / white / grey: twinkling star dust, pulsing rings, two orbiting dots, bubbles and a bouncing, shimmering title
 do
 	local Players = game:GetService("Players")
 	local RunService = game:GetService("RunService")
@@ -40,16 +41,40 @@ do
 	root.Active = true -- blocks clicks going through to the game
 	root.Parent = sg
 
+	local function circle(parent)
+		local f = Instance.new("Frame")
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.BorderSizePixel = 0
+		f.Parent = parent
+		Instance.new("UICorner", f).CornerRadius = UDim.new(1, 0)
+		return f
+	end
+
+	-- twinkling star dust drifting slowly upwards
+	local dust = {}
+	for i = 1, 70 do
+		local sz = (i % 5 == 0) and 3 or ((i % 2 == 0) and 2 or 1)
+		local f = Instance.new("Frame")
+		f.Size = UDim2.new(0, sz, 0, sz)
+		f.BackgroundColor3 = Color3.new(1, 1, 1)
+		f.BackgroundTransparency = 1
+		f.BorderSizePixel = 0
+		f.Parent = root
+		local d = { f = f, x = math.random(), y = math.random(), vy = 0.004 + math.random() * 0.012, ph = math.random() * 6.28, tw = 0.8 + math.random() * 2.2 }
+		f.Position = UDim2.new(d.x, 0, d.y, 0)
+		dust[i] = d
+	end
+
 	-- floating bubbles
 	local bubbles = {}
-	for i = 1, 22 do
+	for i = 1, 14 do
 		local size = math.random(14, 46)
 		local b = Instance.new("Frame")
 		b.Size = UDim2.new(0, size, 0, size)
 		b.AnchorPoint = Vector2.new(0.5, 0.5)
 		local shade = math.random(90, 255)
 		b.BackgroundColor3 = Color3.fromRGB(shade, shade, shade)
-		b.BackgroundTransparency = 0.9
+		b.BackgroundTransparency = 0.92
 		b.BorderSizePixel = 0
 		b.Parent = root
 		Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
@@ -61,12 +86,53 @@ do
 		bubbles[i] = { f = b, x = math.random(), speed = 0.04 + math.random() * 0.08, phase = math.random(), sway = 0.01 + math.random() * 0.03 }
 	end
 
+	-- pulsing rings that ripple out from behind the title
+	local pulse = {}
+	for i = 1, 3 do
+		local f = circle(root)
+		f.Position = UDim2.new(0.5, 0, 0.45, 0)
+		f.BackgroundTransparency = 1
+		local s = Instance.new("UIStroke")
+		s.Color = Color3.new(1, 1, 1)
+		s.Thickness = 1.5
+		s.Transparency = 1
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		s.Parent = f
+		pulse[i] = { f = f, s = s, off = (i - 1) / 3 }
+	end
+
+	-- two tilted orbit lines around the title with a bright dot travelling on each
+	local orbits = {}
+	local orbitDefs = { { rot = -9, speed = 0.9, phase = 0 }, { rot = 9, speed = -0.7, phase = 2.1 } }
+	for i, def in ipairs(orbitDefs) do
+		local e = circle(root)
+		e.Position = UDim2.new(0.5, 0, 0.45, 0)
+		e.BackgroundTransparency = 1
+		e.Rotation = def.rot
+		local s = Instance.new("UIStroke")
+		s.Color = Color3.fromRGB(170, 170, 170)
+		s.Thickness = 1
+		s.Transparency = 0.7
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		s.Parent = e
+		local dot = circle(root)
+		dot.Size = UDim2.new(0, 7, 0, 7)
+		dot.BackgroundColor3 = Color3.new(1, 1, 1)
+		local halo = circle(dot)
+		halo.Position = UDim2.new(0.5, 0, 0.5, 0)
+		halo.Size = UDim2.new(0, 18, 0, 18)
+		halo.BackgroundColor3 = Color3.new(1, 1, 1)
+		halo.BackgroundTransparency = 0.86
+		orbits[i] = { e = e, dot = dot, def = def }
+	end
+
 	-- title, one label per letter so each can bounce
 	local holder = Instance.new("Frame")
 	holder.AnchorPoint = Vector2.new(0.5, 0.5)
 	holder.Position = UDim2.new(0.5, 0, 0.45, 0)
 	holder.Size = UDim2.new(0.88, 0, 0.14, 0)
 	holder.BackgroundTransparency = 1
+	holder.ZIndex = 5
 	holder.Parent = root
 	local cap = Instance.new("UISizeConstraint")
 	cap.MaxSize = Vector2.new(720, 90)
@@ -104,7 +170,7 @@ do
 	barBack.AnchorPoint = Vector2.new(0.5, 1)
 	barBack.Position = UDim2.new(0.5, 0, 1, -62)
 	barBack.Size = UDim2.new(0.5, 0, 0, 6)
-	barBack.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+	barBack.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
 	barBack.BorderSizePixel = 0
 	barBack.ClipsDescendants = true
 	barBack.Parent = root
@@ -112,6 +178,12 @@ do
 	barCap.MaxSize = Vector2.new(320, 6)
 	barCap.Parent = barBack
 	Instance.new("UICorner", barBack).CornerRadius = UDim.new(1, 0)
+	local barRim = Instance.new("UIStroke")
+	barRim.Color = Color3.fromRGB(120, 120, 120)
+	barRim.Thickness = 1
+	barRim.Transparency = 0.6
+	barRim.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	barRim.Parent = barBack
 
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(0.35, 0, 1, 0)
@@ -120,6 +192,11 @@ do
 	bar.Parent = barBack
 	Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
 	local barGrad = Instance.new("UIGradient")
+	barGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 60, 64)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 60, 64)),
+	})
 	barGrad.Parent = bar
 
 	local loadText = Instance.new("TextLabel")
@@ -129,15 +206,32 @@ do
 	loadText.BackgroundTransparency = 1
 	loadText.Font = FONT
 	loadText.TextSize = 14
-	loadText.TextColor3 = Color3.fromRGB(190, 190, 210)
+	loadText.TextColor3 = Color3.fromRGB(190, 190, 200)
 	loadText.Text = "loading"
 	loadText.Parent = root
 
 	local start = os.clock()
+	local last = start
 	local finishing = false
 	local conn
 	conn = RunService.RenderStepped:Connect(function()
-		local t = os.clock() - start
+		local now = os.clock()
+		local dt = now - last
+		last = now
+		local t = now - start
+		local sx = math.max(root.AbsoluteSize.X, 1)
+		local sy = math.max(root.AbsoluteSize.Y, 1)
+
+		for _, d in ipairs(dust) do
+			d.y = d.y - d.vy * dt
+			if d.y < -0.02 then
+				d.y = 1.02
+				d.x = math.random()
+			end
+			d.f.Position = UDim2.new(d.x, 0, d.y, 0)
+			d.f.BackgroundTransparency = 0.2 + 0.75 * (0.5 + 0.5 * math.sin(t * d.tw + d.ph))
+		end
+
 		for _, d in ipairs(letters) do
 			local p = math.clamp((t - d.i * 0.06) / 0.45, 0, 1)
 			local pop = 1 - (1 - p) ^ 3
@@ -151,13 +245,36 @@ do
 			d.g.Color = c
 			d.g.Transparency = 1 - pop * 0.55
 		end
+
 		for _, b in ipairs(bubbles) do
 			local y = 1.1 - ((t * b.speed + b.phase) % 1) * 1.25
 			b.f.Position = UDim2.new(b.x + math.sin(t * 1.5 + b.phase * 6) * b.sway, 0, y, 0)
 		end
+
+		local base = math.min(sx, sy)
+		for _, r in ipairs(pulse) do
+			local p = (t * 0.3 + r.off) % 1
+			local d = base * (0.18 + 1.0 * p)
+			r.f.Size = UDim2.new(0, d, 0, d)
+			r.s.Transparency = 0.3 + 0.7 * p
+		end
+
+		local ew = math.min(sx * 0.94, 800)
+		local eh = ew * 0.2
+		for _, o in ipairs(orbits) do
+			o.e.Size = UDim2.new(0, ew, 0, eh)
+			local th = t * o.def.speed + o.def.phase
+			local px = (ew / 2) * math.cos(th)
+			local py = (eh / 2) * math.sin(th)
+			local phi = math.rad(o.def.rot)
+			local X = px * math.cos(phi) - py * math.sin(phi)
+			local Y = px * math.sin(phi) + py * math.cos(phi)
+			o.dot.Position = UDim2.new(0, sx * 0.5 + X, 0, sy * 0.45 + Y)
+			o.dot.ZIndex = (math.sin(th) < 0) and 1 or 4
+		end
+
 		local slide = (t * 0.9) % 1.7 - 0.5
 		bar.Position = UDim2.new(slide, 0, 0, 0)
-		barGrad.Color = ColorSequence.new(Color3.fromRGB(110, 110, 115), Color3.fromRGB(245, 245, 245))
 		loadText.Text = "loading" .. string.rep(".", math.floor(t * 2.5) % 4)
 	end)
 
@@ -198,6 +315,8 @@ local SHOT_RADIUS = 30           -- studs from you within which a new effect cou
 local OVERLAY_TRANSPARENCY = 0.6 -- only used if the texture tint isn't supported (colour wash)
 local BUBBLY_FONT = Enum.Font.FredokaOne   -- bubbly menu font used everywhere (try Enum.Font.GothamBlack for a sharper look)
 local GUI_SCALE = 1.25       -- how big the whole menu is (1 = old size, 1.5 = even bigger)
+local DEFAULT_THEME = "Galaxy" -- the menu look when it opens: Galaxy, Black, White, Red, Orange, Yellow, Green, Blue, Purple or Pink
+local MENU_FX = true         -- animated nebula / stars / shooting stars behind the menu (set false for a lighter menu on weak devices)
 local MENU_OUTLINE = Color3.fromRGB(70, 74, 88)
 local BUTTON_OUTLINE = Color3.fromRGB(120, 125, 142)  -- glass rim around every button
 local BUTTON_SELECTED = Color3.fromRGB(0, 150, 235)
@@ -3237,34 +3356,27 @@ local function parseHex(s)
 	return Color3.fromRGB(math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256)
 end
 
--- menu theme colours (changed by the UI tab)
+-- menu theme (changed by the UI tab). Every colour in the menu is read from UI.T, so changing the theme recolours it all.
 local UI = {
 	accent = BUTTON_SELECTED,
-	on = Color3.fromRGB(0, 105, 190),     -- toggle buttons when ON
-	off = Color3.fromRGB(78, 80, 92),     -- toggle buttons when OFF
-	btn = Color3.fromRGB(84, 84, 100),    -- feature buttons (Reset, Glass, tabs, Apply)
-	feature = {},                         -- every feature button that follows the UI colour
+	on = BUTTON_SELECTED,
+	off = Color3.fromRGB(70, 72, 84),
+	btn = Color3.fromRGB(84, 84, 100),
+	T = nil,            -- the current theme table (filled in by the menu)
+	listeners = {},     -- one function per menu piece, called with the theme whenever it changes
+	feature = {},
 }
 
+-- every selectable button registers a function here so "selected" can be shown on it
+local outlineFns = setmetatable({}, { __mode = "k" })
 local function setOutline(bg, on)
-	local stroke = bg:FindFirstChildOfClass("UIStroke")
-	if stroke then
-		stroke.Color = on and UI.accent or BUTTON_OUTLINE
-		stroke.Thickness = on and 2.5 or 1
-		stroke.Transparency = on and 0 or 0.45
-	end
+	local fn = outlineFns[bg]
+	if fn then fn(on) end
 end
 
 local function updateStatus()
 	for _, t in ipairs(toggleUI) do
-		if t.glassTb then t.glassTb.Text = glassOverlay and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF" end
-		if t.glassBg then
-			t.glassBg.BackgroundColor3 = glassOverlay and UI.on or UI.off
-		end
-		if t.trailTb then t.trailTb.Text = trailOn and "TRAIL: ON" or "TRAIL: OFF" end
-		if t.trailBg then
-			t.trailBg.BackgroundColor3 = trailOn and UI.on or UI.off
-		end
+		if t.update then t.update() end
 	end
 	if statusLabel then
 		statusLabel.Text = selected and ("Selected: " .. selected.name) or "Selected: Default"
@@ -3399,9 +3511,12 @@ local function loadIconImage()
 end
 
 local function buildGui()
+	local TweenService = game:GetService("TweenService")
+
 	gui = Instance.new("ScreenGui")
 	gui.Name = "VoidscopeRecolor"
 	gui.ResetOnSpawn = false
+	pcall(function() gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling end)
 	local ok = pcall(function()
 		gui.Parent = (gethui and gethui()) or game:GetService("CoreGui")
 	end)
@@ -3409,36 +3524,66 @@ local function buildGui()
 		gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	end
 
-	local WIDTH = 290   -- width of the page area
-	local TABW = 100    -- width of the left tab column (SCOPES / GINGERSCOPE)
+	local WIDTH = 292   -- width of the page area
+	local TABW = 100    -- width of the left tab column
+	local CARD_W = math.floor(((WIDTH - 20) - 16 - 6) / 2) -- width of one skin card (two per row)
+	local FRAME_R = 18  -- corner roundness of the whole menu
+	local WHITE = Color3.new(1, 1, 1)
 
-	local function photoText(b, size)
-		b.Font = BUBBLY_FONT
-		b.TextSize = size or 15
-		b.TextColor3 = Color3.new(1, 1, 1)
-		b.TextStrokeColor3 = Color3.new(0, 0, 0)
-		b.TextStrokeTransparency = 0.3
+	local spinners = {}     -- gradients that slowly rotate
+	local sparkleBars = {}  -- the little 4-point star in the header
+
+	---------------------------------------------------------------
+	-- tiny helpers
+	---------------------------------------------------------------
+	local function tween(inst, t, props)
+		pcall(function()
+			TweenService:Create(inst, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
+		end)
 	end
-
-	local METAL_FRAME = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(12, 12, 15)),
-		ColorSequenceKeypoint.new(0.1, Color3.fromRGB(2, 2, 4)),
-		ColorSequenceKeypoint.new(0.24, Color3.fromRGB(2, 2, 3)),
-		ColorSequenceKeypoint.new(0.31, Color3.fromRGB(34, 36, 44)),
-		ColorSequenceKeypoint.new(0.37, Color3.fromRGB(6, 6, 9)),
-		ColorSequenceKeypoint.new(0.55, Color3.fromRGB(1, 1, 2)),
-		ColorSequenceKeypoint.new(0.67, Color3.fromRGB(26, 27, 34)),
-		ColorSequenceKeypoint.new(0.73, Color3.fromRGB(4, 4, 6)),
-		ColorSequenceKeypoint.new(0.88, Color3.fromRGB(2, 2, 3)),
-		ColorSequenceKeypoint.new(0.95, Color3.fromRGB(20, 21, 27)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(4, 4, 6)),
-	})
-	local METAL_BUTTON = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Color3.fromRGB(175, 175, 182)),
-		ColorSequenceKeypoint.new(0.48, Color3.fromRGB(120, 120, 128)),
-		ColorSequenceKeypoint.new(0.52, Color3.fromRGB(75, 75, 84)),
-		ColorSequenceKeypoint.new(1, Color3.fromRGB(135, 135, 144)),
-	})
+	local function corner(inst, r)
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0, r)
+		c.Parent = inst
+		return c
+	end
+	local function round(inst)
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0)
+		c.Parent = inst
+		return c
+	end
+	local function stroke(inst, color, thickness, transparency)
+		local s = Instance.new("UIStroke")
+		s.Color = color
+		s.Thickness = thickness
+		s.Transparency = transparency or 0
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		s.Parent = inst
+		return s
+	end
+	local function gradient(inst, seq, rot)
+		local g = Instance.new("UIGradient")
+		if seq then g.Color = seq end
+		g.Rotation = rot or 0
+		g.Parent = inst
+		return g
+	end
+	local function spin(g, speed)
+		table.insert(spinners, { g = g, speed = speed, rot = g.Rotation })
+	end
+	local function styleText(obj, size)
+		obj.Font = BUBBLY_FONT
+		obj.TextSize = size or 14
+		obj.TextColor3 = WHITE
+		obj.TextStrokeColor3 = Color3.new(0, 0, 0)
+		obj.TextStrokeTransparency = 0.35
+	end
+	local function onTheme(fn)
+		table.insert(UI.listeners, fn)
+	end
+	local function lighten(c, k) return c:Lerp(WHITE, k) end
+	local function shade(c, k) return c:Lerp(Color3.new(0, 0, 0), k) end
 
 	-- where the mouse / finger is, in the same space as AbsolutePosition
 	local function pointerPos(input)
@@ -3450,160 +3595,366 @@ local function buildGui()
 		return Vector2.new(m.X - inset.X, m.Y - inset.Y)
 	end
 
-	local function makeGlassButton(parent, order, text, fillColor, fillGradient, onClick, transparency)
-		local holder = Instance.new("Frame")
-		holder.LayoutOrder = order
-		holder.BackgroundTransparency = 1
-		holder.Parent = parent
-
-		local bg = Instance.new("Frame")
-		bg.Name = "Glass"
-		bg.Size = UDim2.new(1, 0, 1, 0)
-		bg.BackgroundColor3 = fillGradient and Color3.new(1, 1, 1) or fillColor
-		bg.BackgroundTransparency = transparency or 0
-		bg.BorderSizePixel = 0
-		bg.ZIndex = 1
-		bg.Parent = holder
-		Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 9)
-		local g = Instance.new("UIGradient")
-		if fillGradient then
-			g.Color = fillGradient
-		else
-			g.Color = METAL_BUTTON
-			g.Rotation = 90
+	---------------------------------------------------------------
+	-- THEMES: one table of colours per look. "galaxy" is the full cosmic one.
+	---------------------------------------------------------------
+	local function cycle(list)
+		local keys = {}
+		local count = #list
+		for i, c in ipairs(list) do
+			keys[i] = ColorSequenceKeypoint.new((i - 1) / count, c)
 		end
-		g.Parent = bg
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = BUTTON_OUTLINE
-		stroke.Thickness = 1
-		stroke.Transparency = 0.45
-		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		stroke.Parent = bg
-
-		local shine = Instance.new("Frame")
-		shine.Name = "Shine"
-		shine.Size = UDim2.new(1, -8, 0.45, 0)
-		shine.Position = UDim2.new(0, 4, 0, 2)
-		shine.BackgroundColor3 = Color3.new(1, 1, 1)
-		shine.BorderSizePixel = 0
-		shine.ZIndex = 2
-		shine.Parent = holder
-		Instance.new("UICorner", shine).CornerRadius = UDim.new(0, 7)
-		local shineGradient = Instance.new("UIGradient")
-		shineGradient.Rotation = 90
-		shineGradient.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.6),
-			NumberSequenceKeypoint.new(1, 1),
-		})
-		shineGradient.Parent = shine
-
-		local tb = Instance.new("TextButton")
-		tb.Size = UDim2.new(1, 0, 1, 0)
-		tb.BackgroundTransparency = 1
-		tb.BorderSizePixel = 0
-		tb.AutoButtonColor = false
-		tb.ZIndex = 3
-		photoText(tb, 13)
-		tb.TextScaled = true
-		local limit = Instance.new("UITextSizeConstraint")
-		limit.MaxTextSize = 14
-		limit.MinTextSize = 7
-		limit.Parent = tb
-		tb.Text = text
-		tb.Parent = holder
-		tb.MouseButton1Click:Connect(onClick)
-		return bg, tb, holder
+		keys[count + 1] = ColorSequenceKeypoint.new(1, list[1])
+		return ColorSequence.new(keys)
 	end
 
+	local function makeTheme(look)
+		local T = {}
+		local h, s, v = 0, 0, 0
+		local kind = "color"
+		if look == "galaxy" then
+			kind = "galaxy"
+		elseif look == "black" then
+			kind = "black"
+		else
+			h, s, v = Color3.toHSV(look)
+			if v < 0.12 then
+				kind = "black"
+			elseif s < 0.12 then
+				kind = "white"
+			end
+		end
+
+		if kind == "galaxy" then
+			T.galaxy = true
+			T.a1 = Color3.fromRGB(178, 122, 255)
+			T.a2 = Color3.fromRGB(72, 168, 255)
+			T.a3 = Color3.fromRGB(255, 112, 218)
+			T.border = cycle({ T.a1, T.a2, Color3.fromRGB(90, 255, 235), T.a3 })
+			T.bg = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 4, 30)),
+				ColorSequenceKeypoint.new(0.35, Color3.fromRGB(32, 12, 76)),
+				ColorSequenceKeypoint.new(0.65, Color3.fromRGB(10, 22, 66)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 3, 26)),
+			})
+			T.panel = Color3.fromRGB(6, 3, 20)
+			T.card = Color3.fromRGB(38, 24, 78)
+			T.rim = Color3.fromRGB(128, 96, 215)
+			T.off = Color3.fromRGB(46, 36, 88)
+			T.neb = { Color3.fromRGB(125, 50, 235), Color3.fromRGB(40, 105, 245), Color3.fromRGB(235, 60, 195) }
+			T.nebAmt = 1
+			T.starCount = 70
+			T.starColors = { WHITE, Color3.fromRGB(205, 175, 255), Color3.fromRGB(160, 205, 255), Color3.fromRGB(255, 185, 240) }
+			T.glowT = 0.8
+		elseif kind == "black" then
+			T.a1 = Color3.fromRGB(238, 238, 248)
+			T.a2 = Color3.fromRGB(120, 124, 142)
+			T.a3 = T.a1
+			T.border = cycle({ T.a1, T.a2 })
+			T.bg = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 10, 14)),
+				ColorSequenceKeypoint.new(0.4, Color3.fromRGB(26, 27, 34)),
+				ColorSequenceKeypoint.new(0.7, Color3.fromRGB(7, 7, 10)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 17, 22)),
+			})
+			T.panel = Color3.fromRGB(0, 0, 0)
+			T.card = Color3.fromRGB(30, 30, 38)
+			T.rim = BUTTON_OUTLINE
+			T.off = Color3.fromRGB(40, 40, 50)
+			T.neb = { Color3.fromRGB(150, 150, 165), Color3.fromRGB(90, 92, 110), Color3.fromRGB(170, 170, 180) }
+			T.nebAmt = 0.3
+			T.starCount = 30
+			T.starColors = { WHITE, Color3.fromRGB(190, 192, 205) }
+			T.glowT = 0.88
+		elseif kind == "white" then
+			T.a1 = WHITE
+			T.a2 = Color3.fromRGB(170, 176, 192)
+			T.a3 = T.a1
+			T.border = cycle({ T.a1, T.a2 })
+			T.bg = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(44, 46, 58)),
+				ColorSequenceKeypoint.new(0.5, Color3.fromRGB(86, 88, 104)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(52, 54, 68)),
+			})
+			T.panel = Color3.fromRGB(22, 23, 30)
+			T.card = Color3.fromRGB(104, 107, 124)
+			T.rim = Color3.fromRGB(205, 210, 225)
+			T.off = Color3.fromRGB(72, 74, 90)
+			T.neb = { Color3.fromRGB(220, 222, 235), Color3.fromRGB(150, 155, 175), Color3.fromRGB(235, 235, 245) }
+			T.nebAmt = 0.35
+			T.starCount = 30
+			T.starColors = { WHITE }
+			T.glowT = 0.84
+		else
+			T.a1 = Color3.fromHSV(h, math.min(s, 0.75), 1)
+			T.a2 = Color3.fromHSV((h + 0.07) % 1, math.min(s, 0.9), 0.92)
+			T.a3 = Color3.fromHSV((h - 0.07) % 1, math.min(s, 0.9), 1)
+			T.border = cycle({ T.a1, T.a2, T.a3 })
+			T.bg = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromHSV(h, s, 0.08)),
+				ColorSequenceKeypoint.new(0.4, Color3.fromHSV(h, s, 0.26)),
+				ColorSequenceKeypoint.new(0.7, Color3.fromHSV(h, s, 0.11)),
+				ColorSequenceKeypoint.new(1, Color3.fromHSV(h, s, 0.2)),
+			})
+			T.panel = Color3.fromHSV(h, s, 0.05)
+			T.card = Color3.fromHSV(h, s * 0.8, 0.32)
+			T.rim = Color3.fromHSV(h, s * 0.5, 0.85)
+			T.off = Color3.fromHSV(h, s * 0.5, 0.22)
+			T.neb = { shade(T.a1, 0.45), shade(T.a2, 0.5), shade(T.a3, 0.5) }
+			T.nebAmt = 0.65
+			T.starCount = 36
+			T.starColors = { lighten(T.a1, 0.6), WHITE }
+			T.glowT = 0.82
+		end
+
+		T.accentSeq = ColorSequence.new(T.a1, T.a2)
+		T.fillSeq = ColorSequence.new(shade(T.a1, 0.5), shade(T.a2, 0.5))
+		T.titleSeq = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, T.a1),
+			ColorSequenceKeypoint.new(0.5, WHITE),
+			ColorSequenceKeypoint.new(1, T.a2),
+		})
+		return T
+	end
+
+	local function applyThemeLook(look)
+		local T = makeTheme(look)
+		UI.T = T
+		UI.accent, UI.on, UI.off, UI.btn = T.a1, T.a1, T.off, T.card
+		for _, fn in ipairs(UI.listeners) do
+			local okFn, errFn = pcall(fn, T)
+			if not okFn then warn("[Voidscope Recolor] theme error: " .. tostring(errFn)) end
+		end
+	end
+
+	---------------------------------------------------------------
+	-- THE MENU FRAME: dark gradient body, spinning neon border, soft outer glow
+	---------------------------------------------------------------
 	local frame = Instance.new("Frame")
 	frame.Name = "Main"
-	frame.Size = UDim2.new(0, WIDTH + TABW, 0, 400)
+	frame.Size = UDim2.new(0, WIDTH + TABW, 0, 440)
 	frame.Position = UDim2.new(0, 20, 0.04, 0)
-	frame.BackgroundColor3 = Color3.new(1, 1, 1)
-	frame.BackgroundTransparency = 0
+	frame.BackgroundColor3 = WHITE
+	frame.BackgroundTransparency = 0.02
 	frame.BorderSizePixel = 0
 	frame.Active = true
 	pcall(function() frame.Draggable = true end)
 	frame.Parent = gui
 	local guiScale = Instance.new("UIScale")
-	guiScale.Scale = GUI_SCALE
+	guiScale.Scale = GUI_SCALE * 0.9 -- grows to full size when the loading screen is gone
 	guiScale.Parent = frame
-	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 16)
-	local frameStroke = Instance.new("UIStroke")
-	frameStroke.Color = MENU_OUTLINE
-	frameStroke.Thickness = 1.5
-	frameStroke.Transparency = 0.5
-	frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	frameStroke.Parent = frame
-	local glassSheen = Instance.new("UIGradient")
-	glassSheen.Rotation = 70
-	glassSheen.Color = METAL_FRAME
-	glassSheen.Parent = frame
-	local gloss = Instance.new("Frame")
-	gloss.Name = "Gloss"
-	gloss.Size = UDim2.new(1, -6, 0.3, 0)
-	gloss.Position = UDim2.new(0, 3, 0, 3)
-	gloss.BackgroundColor3 = Color3.new(1, 1, 1)
-	gloss.BorderSizePixel = 0
-	gloss.ZIndex = 1
-	gloss.Parent = frame
-	Instance.new("UICorner", gloss).CornerRadius = UDim.new(0, 14)
-	local glossGradient = Instance.new("UIGradient")
-	glossGradient.Rotation = 90
-	glossGradient.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.93),
-		NumberSequenceKeypoint.new(0.6, 0.98),
-		NumberSequenceKeypoint.new(1, 1),
-	})
-	glossGradient.Parent = gloss
+	corner(frame, FRAME_R)
+	local frameGrad = gradient(frame, nil, 62)
 
-	local stars = Instance.new("Frame")
-	stars.Name = "Stars"
-	stars.Size = UDim2.new(1, 0, 1, 0)
-	stars.BackgroundTransparency = 1
-	stars.ClipsDescendants = true
-	stars.ZIndex = 1
-	stars.Visible = false
-	stars.Parent = frame
-	Instance.new("UICorner", stars).CornerRadius = UDim.new(0, 16)
-	for _ = 1, 45 do
-		local d = Instance.new("Frame")
-		local sz = math.random(1, 2)
-		d.Size = UDim2.new(0, sz, 0, sz)
-		d.Position = UDim2.new(math.random(), 0, math.random(), 0)
-		d.BackgroundColor3 = Color3.new(1, 1, 1)
-		d.BackgroundTransparency = 0.2 + math.random() * 0.5
-		d.BorderSizePixel = 0
-		d.Parent = stars
+	local frameStroke = stroke(frame, WHITE, 2, 0)
+	local borderGrad = gradient(frameStroke, nil, 0)
+	spin(borderGrad, 55)
+
+	local glowGrads = {}
+	for _, spec in ipairs({ { 15, 0.1 }, { 8, 0 } }) do
+		local glow = Instance.new("Frame")
+		glow.Name = "Glow"
+		glow.Size = UDim2.new(1, 0, 1, 0)
+		glow.BackgroundTransparency = 1
+		glow.ZIndex = 1
+		glow.Parent = frame
+		corner(glow, FRAME_R)
+		local gs = stroke(glow, WHITE, spec[1], 0.9)
+		local gg = gradient(gs, nil, 0)
+		spin(gg, 55)
+		table.insert(glowGrads, { stroke = gs, grad = gg, extra = spec[2] })
 	end
 
-	-- LEFT SIDE TABS
+	onTheme(function(T)
+		frameGrad.Color = T.bg
+		borderGrad.Color = T.border
+		for _, g in ipairs(glowGrads) do
+			g.grad.Color = T.border
+			g.stroke.Transparency = math.clamp(T.glowT + g.extra, 0.5, 0.98)
+		end
+	end)
+
+	---------------------------------------------------------------
+	-- COSMIC BACKGROUND (a CanvasGroup so it is clipped by the rounded corners):
+	-- drifting nebula clouds, twinkling stars in 3 depth layers, shooting stars
+	---------------------------------------------------------------
+	local fx = Instance.new("CanvasGroup")
+	fx.Name = "FX"
+	fx.Size = UDim2.new(1, 0, 1, 0)
+	fx.BackgroundTransparency = 1
+	fx.BorderSizePixel = 0
+	fx.ZIndex = 1
+	fx.Parent = frame
+	corner(fx, FRAME_R)
+
+	local nebs, starList, shooters = {}, {}, {}
+	if MENU_FX then
+		local NEB_SPOTS = { { 0.12, 0.18, 0.95 }, { 0.9, 0.52, 0.85 }, { 0.32, 0.96, 0.95 } }
+		for i, spot in ipairs(NEB_SPOTS) do
+			local grp = Instance.new("Frame")
+			grp.Size = UDim2.new(0, 0, 0, 0)
+			grp.BackgroundTransparency = 1
+			grp.Parent = fx
+			local circles = {}
+			for k = 1, 4 do
+				local c = Instance.new("Frame")
+				c.AnchorPoint = Vector2.new(0.5, 0.5)
+				c.Position = UDim2.new(0, 0, 0, 0)
+				local d = (WIDTH + TABW) * spot[3] * (1 - (k - 1) * 0.2)
+				c.Size = UDim2.new(0, d, 0, d)
+				c.BackgroundTransparency = 0.93
+				c.BorderSizePixel = 0
+				c.Parent = grp
+				round(c)
+				circles[k] = c
+			end
+			nebs[i] = { f = grp, circles = circles, x = spot[1], y = spot[2], ph = i * 2.1 }
+		end
+
+		for i = 1, 70 do
+			local layer = (i % 3) + 1
+			local sz = layer
+			local f = Instance.new("Frame")
+			f.Size = UDim2.new(0, sz, 0, sz)
+			f.BackgroundColor3 = WHITE
+			f.BorderSizePixel = 0
+			f.Parent = fx
+			if layer == 3 then round(f) end
+			local st = { f = f, x = math.random(), y = math.random(), layer = layer, sp = 0.004 * layer,
+				ph = math.random() * 6.28, tw = 1 + math.random() * 2.5, idx = i }
+			f.Position = UDim2.new(st.x, 0, st.y, 0)
+			starList[i] = st
+		end
+
+		for i = 1, 2 do
+			local s = Instance.new("Frame")
+			s.AnchorPoint = Vector2.new(1, 0.5)
+			s.Size = UDim2.new(0, 56, 0, 2)
+			s.BackgroundColor3 = WHITE
+			s.BorderSizePixel = 0
+			s.Rotation = 28
+			s.Visible = false
+			s.ZIndex = 2
+			s.Parent = fx
+			round(s)
+			local g = Instance.new("UIGradient")
+			g.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(1, 0),
+			})
+			g.Parent = s
+			shooters[i] = { f = s, nextAt = 1.5 + i * 2.5, t0 = 0, active = false, x0 = 0, y0 = 0 }
+		end
+
+		onTheme(function(T)
+			for i, nb in ipairs(nebs) do
+				for _, c in ipairs(nb.circles) do
+					c.BackgroundColor3 = T.neb[i]
+					c.BackgroundTransparency = 1 - 0.075 * T.nebAmt
+				end
+			end
+			for _, st in ipairs(starList) do
+				local on = st.idx <= T.starCount
+				st.on = on
+				st.f.Visible = on
+				st.f.BackgroundColor3 = T.starColors[(st.idx % #T.starColors) + 1]
+			end
+		end)
+	end
+
+	---------------------------------------------------------------
+	-- LEFT SIDE TABS + the little planet with an orbiting moon
+	---------------------------------------------------------------
 	local sidebar = Instance.new("Frame")
 	sidebar.Name = "Tabs"
 	sidebar.Position = UDim2.new(0, 8, 0, 10)
 	sidebar.Size = UDim2.new(0, TABW - 14, 1, -20)
 	sidebar.BackgroundColor3 = Color3.new(0, 0, 0)
-	sidebar.BackgroundTransparency = 0.3
+	sidebar.BackgroundTransparency = 0.35
 	sidebar.BorderSizePixel = 0
 	sidebar.ZIndex = 2
 	sidebar.Parent = frame
-	sidebar.Visible = true
-	Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 12)
-	local sideStroke = Instance.new("UIStroke")
-	sideStroke.Color = BUTTON_OUTLINE
-	sideStroke.Thickness = 1
-	sideStroke.Transparency = 0.5
-	sideStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	sideStroke.Parent = sidebar
+	corner(sidebar, 14)
+	local sideStroke = stroke(sidebar, WHITE, 1.2, 0.45)
+	local sideGrad = gradient(sideStroke, nil, 90)
 	local sidePad = Instance.new("UIPadding", sidebar)
-	sidePad.PaddingTop = UDim.new(0, 6)
-	sidePad.PaddingBottom = UDim.new(0, 6)
+	sidePad.PaddingTop = UDim.new(0, 7)
+	sidePad.PaddingBottom = UDim.new(0, 7)
 	sidePad.PaddingLeft = UDim.new(0, 5)
 	sidePad.PaddingRight = UDim.new(0, 5)
 	local sideList = Instance.new("UIListLayout", sidebar)
 	sideList.Padding = UDim.new(0, 6)
 	sideList.SortOrder = Enum.SortOrder.LayoutOrder
+	onTheme(function(T)
+		sidebar.BackgroundColor3 = T.panel
+		sideGrad.Color = T.accentSeq
+	end)
 
+	local orbit = Instance.new("Frame")
+	orbit.Name = "Orbit"
+	orbit.AnchorPoint = Vector2.new(0.5, 1)
+	orbit.Position = UDim2.new(0, 8 + (TABW - 14) / 2, 1, -18)
+	orbit.Size = UDim2.new(0, 76, 0, 76)
+	orbit.BackgroundTransparency = 1
+	orbit.ZIndex = 3
+	orbit.Parent = frame
+	local planetGlow = Instance.new("Frame")
+	planetGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+	planetGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+	planetGlow.Size = UDim2.new(0, 60, 0, 60)
+	planetGlow.BackgroundTransparency = 0.86
+	planetGlow.BorderSizePixel = 0
+	planetGlow.ZIndex = 1
+	planetGlow.Parent = orbit
+	round(planetGlow)
+	local planet = Instance.new("Frame")
+	planet.AnchorPoint = Vector2.new(0.5, 0.5)
+	planet.Position = UDim2.new(0.5, 0, 0.5, 0)
+	planet.Size = UDim2.new(0, 30, 0, 30)
+	planet.BackgroundColor3 = WHITE
+	planet.BorderSizePixel = 0
+	planet.ZIndex = 3
+	planet.Parent = orbit
+	round(planet)
+	local planetGrad = gradient(planet, nil, 40)
+	spin(planetGrad, 25)
+	local ringFrame = Instance.new("Frame")
+	ringFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+	ringFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+	ringFrame.Size = UDim2.new(0, 68, 0, 20)
+	ringFrame.BackgroundTransparency = 1
+	ringFrame.Rotation = -22
+	ringFrame.ZIndex = 4
+	ringFrame.Parent = orbit
+	round(ringFrame)
+	local ringStroke = stroke(ringFrame, WHITE, 2.2, 0.15)
+	local ringGrad = gradient(ringStroke, nil, 0)
+	local moon = Instance.new("Frame")
+	moon.AnchorPoint = Vector2.new(0.5, 0.5)
+	moon.Size = UDim2.new(0, 7, 0, 7)
+	moon.BackgroundColor3 = WHITE
+	moon.BorderSizePixel = 0
+	moon.ZIndex = 5
+	moon.Parent = orbit
+	round(moon)
+	onTheme(function(T)
+		planetGlow.BackgroundColor3 = T.a1
+		planetGrad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, lighten(T.a1, 0.35)),
+			ColorSequenceKeypoint.new(0.5, T.a2),
+			ColorSequenceKeypoint.new(1, shade(T.a1, 0.75)),
+		})
+		ringGrad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, T.a1),
+			ColorSequenceKeypoint.new(0.5, WHITE),
+			ColorSequenceKeypoint.new(1, T.a2),
+		})
+		moon.BackgroundColor3 = lighten(T.a2, 0.5)
+	end)
+
+	---------------------------------------------------------------
+	-- CONTENT COLUMN (header, pages, note, footer)
+	---------------------------------------------------------------
 	local content = Instance.new("Frame")
 	content.Name = "Content"
 	content.Position = UDim2.new(0, TABW, 0, 0)
@@ -3622,7 +3973,7 @@ local function buildGui()
 	list.SortOrder = Enum.SortOrder.LayoutOrder
 
 	local function syncHeight()
-		frame.Size = UDim2.new(0, WIDTH + TABW, 0, math.max(content.AbsoluteSize.Y / GUI_SCALE, 200))
+		frame.Size = UDim2.new(0, WIDTH + TABW, 0, math.max(content.AbsoluteSize.Y / guiScale.Scale, 200))
 	end
 	connect(content:GetPropertyChangedSignal("AbsoluteSize"), syncHeight)
 	task.defer(syncHeight)
@@ -3633,50 +3984,432 @@ local function buildGui()
 		return order
 	end
 
+	---------------------------------------------------------------
+	-- HEADER: spinning sparkle, shimmering title, status line, minimise / close
+	---------------------------------------------------------------
 	local header = Instance.new("Frame")
 	header.Name = "Header"
 	header.LayoutOrder = nextOrder()
-	header.Size = UDim2.new(1, 0, 0, 30)
+	header.Size = UDim2.new(1, 0, 0, 44)
 	header.BackgroundTransparency = 1
 	header.Parent = content
 
+	local sparkle = Instance.new("Frame")
+	sparkle.AnchorPoint = Vector2.new(0.5, 0.5)
+	sparkle.Position = UDim2.new(0, 11, 0.5, 0)
+	sparkle.Size = UDim2.new(0, 18, 0, 18)
+	sparkle.BackgroundTransparency = 1
+	sparkle.Parent = header
+	local function sparkleBar(w, h, rot)
+		local f = Instance.new("Frame")
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.Position = UDim2.new(0.5, 0, 0.5, 0)
+		f.Size = UDim2.new(0, w, 0, h)
+		f.BackgroundColor3 = WHITE
+		f.BorderSizePixel = 0
+		f.Rotation = rot
+		f.Parent = sparkle
+		round(f)
+		table.insert(sparkleBars, f)
+	end
+	sparkleBar(18, 2.5, 0)
+	sparkleBar(2.5, 18, 0)
+	sparkleBar(12, 1.5, 45)
+	sparkleBar(12, 1.5, -45)
+
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -70, 1, 0)
+	title.Position = UDim2.new(0, 28, 0, 3)
+	title.Size = UDim2.new(1, -92, 0, 24)
 	title.BackgroundTransparency = 1
-	title.Font = BUBBLY_FONT
+	styleText(title, 19)
 	title.Text = "VESTA RECOLOR"
-	title.TextColor3 = Color3.new(1, 1, 1)
-	title.TextStrokeColor3 = Color3.new(0, 0, 0)
-	title.TextStrokeTransparency = 0.3
 	title.TextScaled = true
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = header
 	local titleLimit = Instance.new("UITextSizeConstraint")
-	titleLimit.MaxTextSize = 19
+	titleLimit.MaxTextSize = 20
 	titleLimit.Parent = title
+	local titleGrad = gradient(title, nil, 0)
 
-	local function headerButton(text, xOffset, bg)
+	statusLabel = Instance.new("TextLabel")
+	statusLabel.Position = UDim2.new(0, 29, 0, 27)
+	statusLabel.Size = UDim2.new(1, -92, 0, 14)
+	statusLabel.BackgroundTransparency = 1
+	styleText(statusLabel, 11)
+	statusLabel.TextColor3 = Color3.fromRGB(176, 178, 200)
+	statusLabel.TextStrokeTransparency = 0.6
+	statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+	statusLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	statusLabel.Text = "Selected: Default"
+	statusLabel.Parent = header
+
+	onTheme(function(T)
+		titleGrad.Color = T.titleSeq
+		for _, f in ipairs(sparkleBars) do
+			f.BackgroundColor3 = lighten(T.a1, 0.45)
+		end
+	end)
+
+	local function headerButton(text, xOffset, hoverColor)
+		local idle = Color3.fromRGB(20, 18, 34)
 		local b = Instance.new("TextButton")
 		b.AnchorPoint = Vector2.new(1, 0.5)
 		b.Position = UDim2.new(1, xOffset, 0.5, 0)
 		b.Size = UDim2.new(0, 28, 0, 28)
-		b.BackgroundColor3 = bg
-		b.BackgroundTransparency = 0.3
+		b.BackgroundColor3 = idle
+		b.BackgroundTransparency = 0.25
 		b.BorderSizePixel = 0
-		photoText(b, 18)
+		b.AutoButtonColor = false
+		styleText(b, 18)
 		b.Text = text
 		b.Parent = header
-		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
-		local s = Instance.new("UIStroke")
-		s.Color = BUTTON_OUTLINE
-		s.Transparency = 0.5
-		s.Thickness = 1
-		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		s.Parent = b
+		corner(b, 9)
+		local s = stroke(b, BUTTON_OUTLINE, 1, 0.5)
+		b.MouseEnter:Connect(function()
+			tween(b, 0.12, { BackgroundColor3 = hoverColor, BackgroundTransparency = 0.05 })
+			s.Transparency = 0.1
+		end)
+		b.MouseLeave:Connect(function()
+			tween(b, 0.15, { BackgroundColor3 = idle, BackgroundTransparency = 0.25 })
+			s.Transparency = 0.5
+		end)
 		return b
 	end
-	local minBtn = headerButton("-", -34, Color3.fromRGB(38, 40, 54))
-	local closeBtn = headerButton("X", 0, Color3.fromRGB(125, 30, 30))
+	local minBtn = headerButton("-", -34, Color3.fromRGB(64, 58, 120))
+	local closeBtn = headerButton("X", 0, Color3.fromRGB(175, 36, 52))
+
+	---------------------------------------------------------------
+	-- BUTTONS: glass cards with a rim that lights up on hover and glows (spinning gradient) when selected
+	---------------------------------------------------------------
+	local function makeButton(parent, order_, text, o)
+		o = o or {}
+		local b = { selected = false, hover = false }
+		local holder = Instance.new("Frame")
+		holder.Name = "Btn"
+		holder.LayoutOrder = order_
+		holder.BackgroundTransparency = 1
+		holder.Size = o.size or UDim2.new(1, 0, 0, 32)
+		holder.Parent = parent
+		local press = Instance.new("UIScale")
+		press.Parent = holder
+
+		local face = Instance.new("Frame")
+		face.Name = "Glass"
+		face.Size = UDim2.new(1, 0, 1, 0)
+		face.BackgroundColor3 = WHITE
+		face.BackgroundTransparency = 0.18
+		face.BorderSizePixel = 0
+		face.ZIndex = 1
+		face.Parent = holder
+		corner(face, 10)
+		local faceGrad = gradient(face, nil, 90)
+		local st = stroke(face, WHITE, 1, 0.55)
+		local sg = gradient(st, nil, 0)
+		sg.Enabled = false
+		spin(sg, 100)
+		if o.face then
+			spin(faceGrad, 30)
+			faceGrad.Rotation = 0
+		end
+
+		local shine = Instance.new("Frame")
+		shine.Size = UDim2.new(1, -10, 0.42, 0)
+		shine.Position = UDim2.new(0, 5, 0, 2)
+		shine.BackgroundColor3 = WHITE
+		shine.BorderSizePixel = 0
+		shine.ZIndex = 2
+		shine.Parent = holder
+		corner(shine, 8)
+		local shineGrad = gradient(shine, nil, 90)
+		shineGrad.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.82),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+
+		local padLeft = o.padLeft or 8
+		if o.orb then
+			local orb = Instance.new("Frame")
+			orb.AnchorPoint = Vector2.new(0, 0.5)
+			orb.Position = UDim2.new(0, 8, 0.5, 0)
+			orb.Size = UDim2.new(0, 20, 0, 20)
+			orb.BackgroundColor3 = o.orb.grad and WHITE or o.orb.color
+			orb.BorderSizePixel = 0
+			orb.ZIndex = 2
+			orb.Parent = holder
+			round(orb)
+			stroke(orb, WHITE, 1.2, 0.45)
+			if o.orb.grad then
+				local og = gradient(orb, o.orb.grad, 45)
+				spin(og, 40)
+			end
+			local hl = Instance.new("Frame")
+			hl.Position = UDim2.new(0.2, 0, 0.15, 0)
+			hl.Size = UDim2.new(0, 7, 0, 4)
+			hl.BackgroundColor3 = WHITE
+			hl.BackgroundTransparency = 0.5
+			hl.BorderSizePixel = 0
+			hl.Rotation = -30
+			hl.ZIndex = 3
+			hl.Parent = orb
+			round(hl)
+			padLeft = 34
+		end
+
+		local tb = Instance.new("TextButton")
+		tb.Size = UDim2.new(1, 0, 1, 0)
+		tb.BackgroundTransparency = 1
+		tb.BorderSizePixel = 0
+		tb.AutoButtonColor = false
+		tb.ZIndex = 4
+		styleText(tb, 13)
+		tb.TextScaled = true
+		tb.TextXAlignment = (o.orb or o.alignLeft) and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+		local limit = Instance.new("UITextSizeConstraint")
+		limit.MaxTextSize = o.maxText or 14
+		limit.MinTextSize = 7
+		limit.Parent = tb
+		local tpad = Instance.new("UIPadding")
+		tpad.PaddingLeft = UDim.new(0, o.orb and padLeft or (o.alignLeft and (o.padLeft or 10) or 4))
+		tpad.PaddingRight = UDim.new(0, o.padRight or 4)
+		tpad.PaddingTop = UDim.new(0, 3)
+		tpad.PaddingBottom = UDim.new(0, 3)
+		tpad.Parent = tb
+		tb.Text = text
+		tb.Parent = holder
+
+		local function paint()
+			local T = UI.T
+			if not T then return end
+			if b.selected then
+				st.Color = WHITE
+				st.Thickness = 2.2
+				st.Transparency = 0
+				sg.Enabled = true
+			else
+				sg.Enabled = false
+				st.Color = T.rim
+				st.Thickness = 1
+				st.Transparency = b.hover and 0.1 or 0.55
+			end
+			face.BackgroundTransparency = b.hover and 0.04 or (o.face and 0.08 or 0.18)
+		end
+		function b.setSelected(on)
+			b.selected = on and true or false
+			paint()
+		end
+
+		tb.MouseEnter:Connect(function()
+			b.hover = true
+			paint()
+			tween(press, 0.12, { Scale = 1.02 })
+		end)
+		tb.MouseLeave:Connect(function()
+			b.hover = false
+			paint()
+			tween(press, 0.15, { Scale = 1 })
+		end)
+		tb.MouseButton1Down:Connect(function()
+			tween(press, 0.07, { Scale = 0.95 })
+		end)
+		tb.MouseButton1Up:Connect(function()
+			tween(press, 0.12, { Scale = b.hover and 1.02 or 1 })
+		end)
+		if o.onClick then
+			tb.MouseButton1Click:Connect(o.onClick)
+		end
+
+		onTheme(function(T)
+			if o.face then
+				faceGrad.Color = o.face
+			elseif o.fill == "accent" then
+				faceGrad.Color = T.fillSeq
+			else
+				local base = o.tint or T.card
+				faceGrad.Color = ColorSequence.new(lighten(base, 0.14), base)
+			end
+			sg.Color = T.border
+			paint()
+		end)
+
+		b.holder, b.face, b.tb = holder, face, tb
+		outlineFns[face] = b.setSelected
+		return b
+	end
+
+	-- on / off switch: a card with a pill that slides
+	local function makeSwitch(parent, order_, text, getState, onClick)
+		local b = makeButton(parent, order_, text, {
+			size = UDim2.new(0.5, -3, 1, 0), onClick = onClick, alignLeft = true, padLeft = 10, padRight = 44, maxText = 12,
+		})
+		local track = Instance.new("Frame")
+		track.AnchorPoint = Vector2.new(1, 0.5)
+		track.Position = UDim2.new(1, -8, 0.5, 0)
+		track.Size = UDim2.new(0, 32, 0, 16)
+		track.BackgroundColor3 = WHITE
+		track.BorderSizePixel = 0
+		track.ZIndex = 3
+		track.Parent = b.holder
+		round(track)
+		local trackGrad = gradient(track, nil, 0)
+		local knob = Instance.new("Frame")
+		knob.AnchorPoint = Vector2.new(0, 0.5)
+		knob.Position = UDim2.new(0, 2, 0.5, 0)
+		knob.Size = UDim2.new(0, 12, 0, 12)
+		knob.BackgroundColor3 = WHITE
+		knob.BorderSizePixel = 0
+		knob.ZIndex = 4
+		knob.Parent = track
+		round(knob)
+		local entry = {}
+		function entry.update()
+			local T = UI.T
+			if not T then return end
+			local on = getState()
+			trackGrad.Color = on and T.accentSeq or ColorSequence.new(T.off)
+			tween(knob, 0.16, { Position = on and UDim2.new(1, -14, 0.5, 0) or UDim2.new(0, 2, 0.5, 0) })
+			b.setSelected(on)
+		end
+		toggleUI[#toggleUI + 1] = entry
+		onTheme(function() entry.update() end)
+		return b
+	end
+
+	-- side tab: lights up with the theme gradient and a glowing bar when it is the open page
+	local function makeTab(parent, order_, text, onClick)
+		local holder = Instance.new("Frame")
+		holder.LayoutOrder = order_
+		holder.Size = UDim2.new(1, 0, 0, 42)
+		holder.BackgroundTransparency = 1
+		holder.Parent = parent
+		local press = Instance.new("UIScale")
+		press.Parent = holder
+		local face = Instance.new("Frame")
+		face.Size = UDim2.new(1, 0, 1, 0)
+		face.BackgroundColor3 = WHITE
+		face.BorderSizePixel = 0
+		face.ZIndex = 1
+		face.Parent = holder
+		corner(face, 10)
+		local faceGrad = gradient(face, nil, 0)
+		local st = stroke(face, WHITE, 1, 0.6)
+		local sg = gradient(st, nil, 0)
+		spin(sg, 100)
+		local bar = Instance.new("Frame")
+		bar.AnchorPoint = Vector2.new(0, 0.5)
+		bar.Position = UDim2.new(0, -2, 0.5, 0)
+		bar.Size = UDim2.new(0, 4, 0.6, 0)
+		bar.BackgroundColor3 = WHITE
+		bar.BorderSizePixel = 0
+		bar.ZIndex = 3
+		bar.Visible = false
+		bar.Parent = holder
+		round(bar)
+		local barGrad = gradient(bar, nil, 90)
+		local tb = Instance.new("TextButton")
+		tb.Size = UDim2.new(1, 0, 1, 0)
+		tb.BackgroundTransparency = 1
+		tb.BorderSizePixel = 0
+		tb.AutoButtonColor = false
+		tb.ZIndex = 4
+		styleText(tb, 13)
+		tb.TextScaled = true
+		tb.TextWrapped = true
+		local limit = Instance.new("UITextSizeConstraint")
+		limit.MaxTextSize = 13
+		limit.MinTextSize = 7
+		limit.Parent = tb
+		local tpad = Instance.new("UIPadding")
+		tpad.PaddingLeft = UDim.new(0, 5)
+		tpad.PaddingRight = UDim.new(0, 3)
+		tpad.PaddingTop = UDim.new(0, 4)
+		tpad.PaddingBottom = UDim.new(0, 4)
+		tpad.Parent = tb
+		tb.Text = text
+		tb.Parent = holder
+
+		local tab = { selected = false, hover = false }
+		local function paint()
+			local T = UI.T
+			if not T then return end
+			bar.Visible = tab.selected
+			if tab.selected then
+				face.BackgroundColor3 = WHITE
+				faceGrad.Color = T.fillSeq
+				face.BackgroundTransparency = 0.05
+				sg.Enabled = true
+				st.Color = WHITE
+				st.Thickness = 2
+				st.Transparency = 0
+			else
+				face.BackgroundColor3 = T.card
+				faceGrad.Color = ColorSequence.new(WHITE)
+				face.BackgroundTransparency = tab.hover and 0.25 or 0.5
+				sg.Enabled = false
+				st.Color = T.rim
+				st.Thickness = 1
+				st.Transparency = tab.hover and 0.2 or 0.6
+			end
+		end
+		function tab.setSelected(on)
+			tab.selected = on and true or false
+			paint()
+		end
+		tb.MouseEnter:Connect(function() tab.hover = true; paint() end)
+		tb.MouseLeave:Connect(function() tab.hover = false; paint(); tween(press, 0.12, { Scale = 1 }) end)
+		tb.MouseButton1Down:Connect(function() tween(press, 0.07, { Scale = 0.95 }) end)
+		tb.MouseButton1Up:Connect(function() tween(press, 0.12, { Scale = 1 }) end)
+		tb.MouseButton1Click:Connect(onClick)
+		onTheme(function(T)
+			sg.Color = T.border
+			barGrad.Color = T.accentSeq
+			paint()
+		end)
+		outlineFns[face] = tab.setSelected
+		return face, tb, holder
+	end
+
+	-- small heading with a diamond and a fading line
+	local function sectionLabel(page, nextFn, text)
+		local row = Instance.new("Frame")
+		row.LayoutOrder = nextFn()
+		row.Size = UDim2.new(1, 0, 0, 18)
+		row.BackgroundTransparency = 1
+		row.Parent = page
+		local dia = Instance.new("Frame")
+		dia.AnchorPoint = Vector2.new(0, 0.5)
+		dia.Position = UDim2.new(0, 2, 0.5, -1)
+		dia.Size = UDim2.new(0, 6, 0, 6)
+		dia.Rotation = 45
+		dia.BorderSizePixel = 0
+		dia.BackgroundColor3 = WHITE
+		dia.Parent = row
+		local dg = gradient(dia, nil, 0)
+		local l = Instance.new("TextLabel")
+		l.Position = UDim2.new(0, 14, 0, 0)
+		l.Size = UDim2.new(1, -14, 1, -3)
+		l.BackgroundTransparency = 1
+		styleText(l, 12)
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.Text = text
+		l.Parent = row
+		local line = Instance.new("Frame")
+		line.AnchorPoint = Vector2.new(0, 1)
+		line.Position = UDim2.new(0, 0, 1, 0)
+		line.Size = UDim2.new(1, 0, 0, 1)
+		line.BackgroundColor3 = WHITE
+		line.BorderSizePixel = 0
+		line.Parent = row
+		local lg = gradient(line, nil, 0)
+		lg.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.1),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		onTheme(function(T)
+			dg.Color = T.accentSeq
+			lg.Color = T.accentSeq
+		end)
+		return l
+	end
 
 	-- PAGES (one per side tab, only one is visible at a time)
 	local pages = {}
@@ -3700,10 +4433,10 @@ local function buildGui()
 		end
 	end
 
-	local function featureRow(page, nextFn)
+	local function featureRow(page, nextFn, height)
 		local row = Instance.new("Frame")
 		row.LayoutOrder = nextFn()
-		row.Size = UDim2.new(1, 0, 0, 30)
+		row.Size = UDim2.new(1, 0, 0, height or 32)
 		row.BackgroundTransparency = 1
 		row.Parent = page
 		local rl = Instance.new("UIListLayout")
@@ -3714,23 +4447,14 @@ local function buildGui()
 		return row
 	end
 
-	local function sectionLabel(page, nextFn, text)
-		local l = label(page, nextFn(), text, 14, Color3.new(1, 1, 1), 16)
-		l.Font = BUBBLY_FONT
-		l.TextXAlignment = Enum.TextXAlignment.Left
-		l.TextStrokeColor3 = Color3.new(0, 0, 0)
-		l.TextStrokeTransparency = 0.3
-		return l
-	end
-
-	-- scrolling list of colours; suffix = " SCOPE", store = table that remembers each button
-	local function colorScroll(page, nextFn, suffix, onPick, store, list_)
+	-- scrolling grid of skin cards (two per row), each with a glossy colour orb
+	local function colorScroll(page, nextFn, onPick, store, list_)
 		local scroll = Instance.new("ScrollingFrame")
 		scroll.Name = "Colours"
 		scroll.LayoutOrder = nextFn()
-		scroll.Size = UDim2.new(1, 0, 0, 175)
+		scroll.Size = UDim2.new(1, 0, 0, 196)
 		scroll.BackgroundColor3 = Color3.new(0, 0, 0)
-		scroll.BackgroundTransparency = 0.3
+		scroll.BackgroundTransparency = 0.35
 		scroll.BorderSizePixel = 0
 		scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 		scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -3738,35 +4462,43 @@ local function buildGui()
 		scroll.ScrollBarThickness = 4
 		scroll.ScrollBarImageColor3 = Color3.fromRGB(150, 154, 170)
 		scroll.Parent = page
-		Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 10)
-		local scrollStroke = Instance.new("UIStroke")
-		scrollStroke.Color = BUTTON_OUTLINE
-		scrollStroke.Thickness = 1
-		scrollStroke.Transparency = 0.5
-		scrollStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		scrollStroke.Parent = scroll
+		corner(scroll, 12)
+		local scrollStroke = stroke(scroll, WHITE, 1, 0.4)
+		local scrollGrad = gradient(scrollStroke, nil, 90)
 		local scrollPad = Instance.new("UIPadding", scroll)
 		scrollPad.PaddingTop = UDim.new(0, 6)
 		scrollPad.PaddingBottom = UDim.new(0, 6)
 		scrollPad.PaddingLeft = UDim.new(0, 6)
 		scrollPad.PaddingRight = UDim.new(0, 10)
-		local scrollList = Instance.new("UIListLayout", scroll)
-		scrollList.Padding = UDim.new(0, 6)
-		scrollList.SortOrder = Enum.SortOrder.LayoutOrder
+		local grid = Instance.new("UIGridLayout", scroll)
+		grid.CellSize = UDim2.new(0, CARD_W, 0, 36)
+		grid.CellPadding = UDim2.new(0, 6, 0, 6)
+		grid.SortOrder = Enum.SortOrder.LayoutOrder
+
+		onTheme(function(T)
+			scroll.BackgroundColor3 = T.panel
+			scroll.ScrollBarImageColor3 = T.a1
+			scrollGrad.Color = T.accentSeq
+		end)
 
 		for i, entry in ipairs(list_) do
 			local shown = colorsClose(entry.color, Color3.new(0, 0, 0)) and Color3.fromRGB(40, 40, 46) or entry.color
-			local grad = entry.btnGradient or (entry.gradient and RAINBOW_SEQUENCE) or nil
-			local bg, _, holder = makeGlassButton(scroll, i, string.upper(entry.name) .. (entry.noSuffix and "" or suffix), shown, grad,
-				function() onPick(entry) end)
-			holder.Size = UDim2.new(1, 0, 0, 34)
-			store[entry.name] = bg
+			local grad_ = entry.btnGradient or (entry.gradient and RAINBOW_SEQUENCE) or nil
+			local shownName = string.upper(entry.name)
+			shownName = string.gsub(shownName, " GINGERSCOPE$", "")
+			local btn = makeButton(scroll, i, shownName, {
+				orb = { color = shown, grad = grad_ },
+				onClick = function() onPick(entry) end,
+				maxText = 13,
+			})
+			store[entry.name] = btn.face
 		end
 		return scroll
 	end
 
-	-- COLOUR PICKER: a colour box with a dot you drag around (saturation / brightness), a hue slider,
-	-- and a hex box. onApply(color) is called while dragging and when you let go / press Apply.
+	---------------------------------------------------------------
+	-- COLOUR PICKER (box with a dot you drag, hue slider, hex box)
+	---------------------------------------------------------------
 	local function buildPicker(page, nextFn, onApply)
 		sectionLabel(page, nextFn, "COLOUR PICKER")
 		local h, s, v = 0, 1, 1
@@ -3776,24 +4508,21 @@ local function buildGui()
 
 		local sv = Instance.new("TextButton")
 		sv.LayoutOrder = nextFn()
-		sv.Size = UDim2.new(1, 0, 0, 110)
+		sv.Size = UDim2.new(1, 0, 0, 100)
 		sv.AutoButtonColor = false
 		sv.Text = ""
 		sv.BorderSizePixel = 0
 		sv.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
 		sv.ClipsDescendants = true
 		sv.Parent = page
-		Instance.new("UICorner", sv).CornerRadius = UDim.new(0, 8)
-		local svStroke = Instance.new("UIStroke")
-		svStroke.Color = BUTTON_OUTLINE
-		svStroke.Thickness = 1
-		svStroke.Transparency = 0.3
-		svStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		svStroke.Parent = sv
+		corner(sv, 10)
+		local svStroke = stroke(sv, WHITE, 1.5, 0.2)
+		local svGrad = gradient(svStroke, nil, 45)
+		spin(svGrad, 60)
 
 		local whiteLayer = Instance.new("Frame")
 		whiteLayer.Size = UDim2.new(1, 0, 1, 0)
-		whiteLayer.BackgroundColor3 = Color3.new(1, 1, 1)
+		whiteLayer.BackgroundColor3 = WHITE
 		whiteLayer.BorderSizePixel = 0
 		whiteLayer.ZIndex = 2
 		whiteLayer.Parent = sv
@@ -3825,12 +4554,8 @@ local function buildGui()
 		dot.BorderSizePixel = 0
 		dot.ZIndex = 5
 		dot.Parent = sv
-		Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-		local dotStroke = Instance.new("UIStroke")
-		dotStroke.Color = Color3.new(1, 1, 1)
-		dotStroke.Thickness = 2.5
-		dotStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		dotStroke.Parent = dot
+		round(dot)
+		stroke(dot, WHITE, 2.5, 0)
 
 		local hue = Instance.new("TextButton")
 		hue.LayoutOrder = nextFn()
@@ -3838,40 +4563,26 @@ local function buildGui()
 		hue.AutoButtonColor = false
 		hue.Text = ""
 		hue.BorderSizePixel = 0
-		hue.BackgroundColor3 = Color3.new(1, 1, 1)
+		hue.BackgroundColor3 = WHITE
 		hue.Parent = page
-		Instance.new("UICorner", hue).CornerRadius = UDim.new(0, 8)
+		round(hue)
+		stroke(hue, WHITE, 1, 0.6)
 		local hueKeys = {}
 		for i = 0, 6 do
 			table.insert(hueKeys, ColorSequenceKeypoint.new(i / 6, Color3.fromHSV(i / 6 >= 1 and 0 or i / 6, 1, 1)))
 		end
-		local hg = Instance.new("UIGradient")
-		hg.Color = ColorSequence.new(hueKeys)
-		hg.Parent = hue
+		gradient(hue, ColorSequence.new(hueKeys), 0)
 		local marker = Instance.new("Frame")
 		marker.AnchorPoint = Vector2.new(0.5, 0.5)
 		marker.Size = UDim2.new(0, 8, 1, 6)
-		marker.BackgroundColor3 = Color3.new(1, 1, 1)
+		marker.BackgroundColor3 = WHITE
 		marker.BorderSizePixel = 0
 		marker.ZIndex = 3
 		marker.Parent = hue
-		Instance.new("UICorner", marker).CornerRadius = UDim.new(0, 4)
-		local markerStroke = Instance.new("UIStroke")
-		markerStroke.Color = Color3.new(0, 0, 0)
-		markerStroke.Thickness = 1.5
-		markerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		markerStroke.Parent = marker
+		corner(marker, 4)
+		stroke(marker, Color3.new(0, 0, 0), 1.5, 0)
 
-		local hexRow = Instance.new("Frame")
-		hexRow.LayoutOrder = nextFn()
-		hexRow.Size = UDim2.new(1, 0, 0, 30)
-		hexRow.BackgroundTransparency = 1
-		hexRow.Parent = page
-		local hexList = Instance.new("UIListLayout")
-		hexList.FillDirection = Enum.FillDirection.Horizontal
-		hexList.Padding = UDim.new(0, 6)
-		hexList.SortOrder = Enum.SortOrder.LayoutOrder
-		hexList.Parent = hexRow
+		local hexRow = featureRow(page, nextFn, 30)
 
 		local swatch = Instance.new("Frame")
 		swatch.LayoutOrder = 1
@@ -3879,18 +4590,15 @@ local function buildGui()
 		swatch.BackgroundColor3 = Color3.new(1, 0, 0)
 		swatch.BorderSizePixel = 0
 		swatch.Parent = hexRow
-		Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 8)
-		local swatchStroke = Instance.new("UIStroke")
-		swatchStroke.Color = BUTTON_OUTLINE
-		swatchStroke.Thickness = 1
-		swatchStroke.Transparency = 0.3
-		swatchStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		swatchStroke.Parent = swatch
+		corner(swatch, 9)
+		local swatchStroke = stroke(swatch, WHITE, 1.5, 0.15)
+		local swatchGrad = gradient(swatchStroke, nil, 0)
+		spin(swatchGrad, 80)
 
 		local hexBox = Instance.new("TextBox")
 		hexBox.LayoutOrder = 2
 		hexBox.Size = UDim2.new(1, -112, 1, 0)
-		hexBox.BackgroundColor3 = Color3.fromRGB(20, 21, 28)
+		hexBox.BackgroundColor3 = Color3.fromRGB(10, 8, 20)
 		hexBox.BackgroundTransparency = 0.1
 		hexBox.BorderSizePixel = 0
 		hexBox.ClearTextOnFocus = false
@@ -3899,18 +4607,19 @@ local function buildGui()
 		hexBox.Text = "#FF0000"
 		hexBox.Font = BUBBLY_FONT
 		hexBox.TextSize = 14
-		hexBox.TextColor3 = Color3.new(1, 1, 1)
+		hexBox.TextColor3 = WHITE
 		hexBox.TextXAlignment = Enum.TextXAlignment.Left
 		hexBox.Parent = hexRow
-		Instance.new("UICorner", hexBox).CornerRadius = UDim.new(0, 8)
+		corner(hexBox, 9)
 		local hexPad = Instance.new("UIPadding", hexBox)
 		hexPad.PaddingLeft = UDim.new(0, 8)
-		local hexStroke = Instance.new("UIStroke")
-		hexStroke.Color = BUTTON_OUTLINE
-		hexStroke.Thickness = 1
-		hexStroke.Transparency = 0.45
-		hexStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		hexStroke.Parent = hexBox
+		local hexStroke = stroke(hexBox, WHITE, 1, 0.45)
+
+		onTheme(function(T)
+			svGrad.Color = T.border
+			swatchGrad.Color = T.border
+			hexStroke.Color = T.rim
+		end)
 
 		local function current()
 			return Color3.fromHSV(h, s, v)
@@ -4007,21 +4716,87 @@ local function buildGui()
 			if enterPressed then applyHex() end
 		end)
 		do
-			local abg, _, holder = makeGlassButton(hexRow, 3, "APPLY", Color3.fromRGB(0, 105, 190), nil, applyHex)
-			table.insert(UI.feature, abg)
-			holder.Size = UDim2.new(0, 70, 1, 0)
+			local ab = makeButton(hexRow, 3, "APPLY", { fill = "accent", onClick = applyHex, size = UDim2.new(0, 70, 1, 0) })
 		end
 		refresh(false)
 	end
 
-	-- PAGE 1: SCOPES
-	local scopesPage, scopesNext = newPage("scopes")
+	-- round colour swatches for the menu colour list
+	local function swatchGrid(page, nextFn, list_, onPick, store)
+		local grid = Instance.new("Frame")
+		grid.LayoutOrder = nextFn()
+		grid.Size = UDim2.new(1, 0, 0, 106)
+		grid.BackgroundTransparency = 1
+		grid.Parent = page
+		local gl = Instance.new("UIGridLayout")
+		gl.CellSize = UDim2.new(0, 50, 0, 50)
+		gl.CellPadding = UDim2.new(0, 5, 0, 6)
+		gl.SortOrder = Enum.SortOrder.LayoutOrder
+		gl.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		gl.Parent = grid
+		for i, entry in ipairs(list_) do
+			local cell = Instance.new("Frame")
+			cell.LayoutOrder = i
+			cell.BackgroundTransparency = 1
+			cell.Parent = grid
+			local ring = Instance.new("Frame")
+			ring.AnchorPoint = Vector2.new(0.5, 0)
+			ring.Position = UDim2.new(0.5, 0, 0, 3)
+			ring.Size = UDim2.new(0, 32, 0, 32)
+			ring.BackgroundTransparency = 1
+			ring.Parent = cell
+			round(ring)
+			local ringStroke = stroke(ring, WHITE, 2.5, 1)
+			local ringGrad = gradient(ringStroke, nil, 0)
+			spin(ringGrad, 120)
+			local orb = Instance.new("Frame")
+			orb.AnchorPoint = Vector2.new(0.5, 0.5)
+			orb.Position = UDim2.new(0.5, 0, 0.5, 0)
+			orb.Size = UDim2.new(0, 24, 0, 24)
+			orb.BackgroundColor3 = entry.btnGradient and WHITE or entry.color
+			orb.BorderSizePixel = 0
+			orb.Parent = ring
+			round(orb)
+			stroke(orb, WHITE, 1.2, 0.5)
+			if entry.btnGradient then
+				spin(gradient(orb, entry.btnGradient, 45), 40)
+			end
+			local orbScale = Instance.new("UIScale")
+			orbScale.Parent = orb
+			local lbl = Instance.new("TextLabel")
+			lbl.Position = UDim2.new(0, 0, 0, 38)
+			lbl.Size = UDim2.new(1, 0, 0, 12)
+			lbl.BackgroundTransparency = 1
+			styleText(lbl, 10)
+			lbl.TextColor3 = Color3.fromRGB(176, 178, 200)
+			lbl.Text = string.upper(entry.name)
+			lbl.Parent = cell
+			local click = Instance.new("TextButton")
+			click.Size = UDim2.new(1, 0, 1, 0)
+			click.BackgroundTransparency = 1
+			click.Text = ""
+			click.ZIndex = 5
+			click.Parent = cell
+			click.MouseEnter:Connect(function() tween(orbScale, 0.12, { Scale = 1.15 }) end)
+			click.MouseLeave:Connect(function() tween(orbScale, 0.15, { Scale = 1 }) end)
+			click.MouseButton1Click:Connect(function() onPick(entry) end)
+			store[entry.name] = ring
+			outlineFns[ring] = function(on)
+				ringStroke.Transparency = on and 0 or 1
+				lbl.TextColor3 = on and WHITE or Color3.fromRGB(176, 178, 200)
+			end
+			onTheme(function(T)
+				ringGrad.Color = T.border
+			end)
+		end
+	end
 
-	local row1 = featureRow(scopesPage, scopesNext)
-	local ui1 = {}
-	toggleUI[#toggleUI + 1] = ui1
-	ui1.glassBg, ui1.glassTb = (function()
-		local bg, tb, holder = makeGlassButton(row1, 1, "SEE-THROUGH: OFF", Color3.fromRGB(78, 80, 92), nil, function()
+	---------------------------------------------------------------
+	-- the shared rows used by both gun pages
+	---------------------------------------------------------------
+	local function gunRows(page, nextFn, glassEntry, chromaEntry)
+		local r1 = featureRow(page, nextFn, 34)
+		makeSwitch(r1, 1, "SEE-THROUGH", function() return glassOverlay end, function()
 			glassOverlay = not glassOverlay
 			if selected then
 				applyColor(selected)
@@ -4029,11 +4804,7 @@ local function buildGui()
 				updateStatus()
 			end
 		end)
-		holder.Size = UDim2.new(0.5, -3, 1, 0)
-		return bg, tb
-	end)()
-	ui1.trailBg, ui1.trailTb = (function()
-		local bg, tb, holder = makeGlassButton(row1, 2, "TRAIL: OFF", Color3.fromRGB(78, 80, 92), nil, function()
+		makeSwitch(r1, 2, "TRAIL", function() return trailOn end, function()
 			trailOn = not trailOn
 			if trailOn and not selected then
 				setNote("Pick a scope first, the trail follows it.")
@@ -4043,164 +4814,41 @@ local function buildGui()
 			refreshTrails()
 			updateStatus()
 		end)
-		holder.Size = UDim2.new(0.5, -3, 1, 0)
-		return bg, tb
-	end)()
 
-	local row2 = featureRow(scopesPage, scopesNext)
-	do
-		local bg, _, holder = makeGlassButton(row2, 1, string.upper(GLASS.name), Color3.fromRGB(100, 140, 170), nil,
-			function() applyColor(GLASS) end, 0.15)
-		holder.Size = UDim2.new(0.5, -3, 1, 0)
-		buttons[GLASS.name] = bg
-		table.insert(UI.feature, bg)
-		local bg2, _, holder2 = makeGlassButton(row2, 2, string.upper(RAINBOW.name), Color3.new(1, 1, 1), RAINBOW_SEQUENCE,
-			function() applyColor(RAINBOW) end)
-		holder2.Size = UDim2.new(0.5, -3, 1, 0)
-		buttons[RAINBOW.name] = bg2
+		local r2 = featureRow(page, nextFn, 32)
+		local third = UDim2.new(1 / 3, -4, 1, 0)
+		local gb = makeButton(r2, 1, "GLASS", { size = third, tint = Color3.fromRGB(70, 110, 150), onClick = function() applyColor(glassEntry) end })
+		buttons[glassEntry.name] = gb.face
+		local cb = makeButton(r2, 2, "CHROMA", { size = third, face = RAINBOW_SEQUENCE, onClick = function() applyColor(chromaEntry) end })
+		buttons[chromaEntry.name] = cb.face
+		makeButton(r2, 3, "RESET", { size = third, tint = Color3.fromRGB(120, 32, 46), onClick = resetColor })
 	end
 
-	local row3 = featureRow(scopesPage, scopesNext)
-	do
-		local rbg, _, holder = makeGlassButton(row3, 1, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), nil, resetColor)
-		table.insert(UI.feature, rbg)
-		holder.Size = UDim2.new(1, 0, 1, 0)
-	end
-
+	-- PAGE 1: SCOPES
+	local scopesPage, scopesNext = newPage("scopes")
+	gunRows(scopesPage, scopesNext, GLASS, RAINBOW)
 	sectionLabel(scopesPage, scopesNext, "SCOPES")
-	colorScroll(scopesPage, scopesNext, " SCOPE", applyColor, buttons, COLORS)
+	colorScroll(scopesPage, scopesNext, applyColor, buttons, COLORS)
 
-
-	-- PAGE 2: GINGERSCOPE (same layout as the scopes page, but every skin here is a gingerscope picture)
+	-- PAGE 2: GINGERSCOPE (same layout, every skin here is a gingerscope picture)
 	do
 		local gingerPage, gingerNext = newPage("gingerscope")
-
-		local grow1 = featureRow(gingerPage, gingerNext)
-		local ui2 = {}
-		toggleUI[#toggleUI + 1] = ui2
-		ui2.glassBg, ui2.glassTb = (function()
-			local bg, tb, holder = makeGlassButton(grow1, 1, "SEE-THROUGH: OFF", Color3.fromRGB(78, 80, 92), nil, function()
-				glassOverlay = not glassOverlay
-				if selected then
-					applyColor(selected)
-				else
-					updateStatus()
-				end
-			end)
-			holder.Size = UDim2.new(0.5, -3, 1, 0)
-			return bg, tb
-		end)()
-		ui2.trailBg, ui2.trailTb = (function()
-			local bg, tb, holder = makeGlassButton(grow1, 2, "TRAIL: OFF", Color3.fromRGB(78, 80, 92), nil, function()
-				trailOn = not trailOn
-				if trailOn and not selected then
-					setNote("Pick a scope first, the trail follows it.")
-				elseif trailOn then
-					setNote("")
-				end
-				refreshTrails()
-				updateStatus()
-			end)
-			holder.Size = UDim2.new(0.5, -3, 1, 0)
-			return bg, tb
-		end)()
-
-		local grow2 = featureRow(gingerPage, gingerNext)
-		do
-			local bg, _, holder = makeGlassButton(grow2, 1, "GLASS", Color3.fromRGB(100, 140, 170), nil,
-				function() applyColor(GINGER.glass) end, 0.15)
-			holder.Size = UDim2.new(0.5, -3, 1, 0)
-			buttons[GINGER.glass.name] = bg
-			table.insert(UI.feature, bg)
-			local bg2, _, holder2 = makeGlassButton(grow2, 2, "CHROMA", Color3.new(1, 1, 1), RAINBOW_SEQUENCE,
-				function() applyColor(GINGER.chroma) end)
-			holder2.Size = UDim2.new(0.5, -3, 1, 0)
-			buttons[GINGER.chroma.name] = bg2
-		end
-
-		local grow3 = featureRow(gingerPage, gingerNext)
-		do
-			local rbg, _, holder = makeGlassButton(grow3, 1, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), nil, resetColor)
-			table.insert(UI.feature, rbg)
-			holder.Size = UDim2.new(1, 0, 1, 0)
-		end
-
+		gunRows(gingerPage, gingerNext, GINGER.glass, GINGER.chroma)
 		sectionLabel(gingerPage, gingerNext, "GINGERSCOPE")
-		colorScroll(gingerPage, gingerNext, "", applyColor, buttons, GINGER.colors)
-
+		colorScroll(gingerPage, gingerNext, applyColor, buttons, GINGER.colors)
 	end
 
-	-- PAGE 3: UI (changes the colour of the menu itself, with presets and a hex / colour picker)
+	-- PAGE 3: UI (recolours the menu itself; Galaxy is the full cosmic look)
+	local startTheme
 	do
 		local uiPage, uiNext = newPage("ui")
-
-		local FRAME_SHAPE = {
-			{ 0, 0.30 }, { 0.1, 0.18 }, { 0.24, 0.16 }, { 0.31, 0.45 }, { 0.37, 0.22 }, { 0.55, 0.16 },
-			{ 0.67, 0.42 }, { 0.73, 0.20 }, { 0.88, 0.17 }, { 0.95, 0.40 }, { 1, 0.20 },
-		}
-		local GALAXY_FRAME = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(14, 6, 40)),
-			ColorSequenceKeypoint.new(0.3, Color3.fromRGB(52, 20, 110)),
-			ColorSequenceKeypoint.new(0.55, Color3.fromRGB(16, 30, 86)),
-			ColorSequenceKeypoint.new(0.8, Color3.fromRGB(90, 30, 100)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 5, 32)),
-		})
-		-- same shape as the dark metal frame, just in the chosen colour
-		local function tintedFrame(c, k)
-			local h, s = Color3.toHSV(c)
-			local keys = {}
-			for _, p in ipairs(FRAME_SHAPE) do
-				table.insert(keys, ColorSequenceKeypoint.new(p[1], Color3.fromHSV(h, s, math.clamp(p[2] * k, 0, 1))))
-			end
-			return ColorSequence.new(keys)
-		end
-
 		local uiButtons = {}
 		local function markUi(name)
 			for n, bg in pairs(uiButtons) do setOutline(bg, n == name) end
 		end
-
 		-- look = "black" | "galaxy" | Color3
 		local function applyTheme(look, name)
-			local seq, accent, onColor = METAL_FRAME, Color3.fromRGB(235, 235, 245), Color3.fromRGB(70, 72, 86)
-			local btnColor, offColor = Color3.fromRGB(84, 84, 100), Color3.fromRGB(78, 80, 92)
-			stars.Visible = false
-			if look == "galaxy" then
-				seq = GALAXY_FRAME
-				accent = Color3.fromRGB(175, 115, 255)
-				onColor = Color3.fromRGB(95, 50, 190)
-				btnColor, offColor = Color3.fromRGB(88, 56, 160), Color3.fromRGB(62, 44, 110)
-				stars.Visible = true
-			elseif typeof(look) == "Color3" then
-				local h, s, v = Color3.toHSV(look)
-				if v < 0.12 then -- black (hex #000000 or the picker dragged to the bottom)
-					seq = METAL_FRAME
-					accent = Color3.fromRGB(235, 235, 245)
-					onColor = Color3.fromRGB(70, 72, 86)
-				elseif s < 0.12 then -- white / grey
-					seq = tintedFrame(Color3.fromHSV(0, 0, 1), 3.2 * math.max(v, 0.35))
-					accent = Color3.new(1, 1, 1)
-					onColor = Color3.fromRGB(120, 122, 136)
-					btnColor, offColor = Color3.fromRGB(160, 162, 176), Color3.fromRGB(120, 122, 136)
-				else
-					seq = tintedFrame(look, 2)
-					accent = Color3.fromHSV(h, math.min(s, 0.75), 1)
-					onColor = Color3.fromHSV(h, s, 0.7)
-					btnColor, offColor = Color3.fromHSV(h, s * 0.8, 0.65), Color3.fromHSV(h, s * 0.5, 0.45)
-				end
-			end
-			glassSheen.Color = seq
-			frameStroke.Color = accent
-			frameStroke.Transparency = 0.25
-			sideStroke.Color = accent
-			sideStroke.Transparency = 0.45
-			UI.accent = accent
-			UI.on = onColor
-			UI.off = offColor
-			UI.btn = btnColor
-			for _, fb in ipairs(UI.feature) do
-				if fb.Parent then fb.BackgroundColor3 = btnColor end
-			end
+			applyThemeLook(look)
 			markUi(name)
 			updateStatus()
 			setNote("")
@@ -4208,76 +4856,66 @@ local function buildGui()
 
 		sectionLabel(uiPage, uiNext, "MENU COLOUR")
 		local UI_COLORS = {
+			{ name = "Galaxy", color = Color3.fromRGB(100, 60, 220), look = "galaxy", btnGradient = GALAXY_SEQ },
+			{ name = "Black",  color = Color3.fromRGB(14, 14, 18), look = "black" },
+			{ name = "White",  color = Color3.fromRGB(240, 240, 245) },
 			{ name = "Red",    color = Color3.fromRGB(255, 40, 40) },
 			{ name = "Orange", color = Color3.fromRGB(255, 130, 20) },
-			{ name = "Pink",   color = Color3.fromRGB(255, 120, 190) },
-			{ name = "Green",  color = Color3.fromRGB(40, 220, 80) },
-			{ name = "Black",  color = Color3.fromRGB(0, 0, 0), look = "black" },
-			{ name = "White",  color = Color3.fromRGB(240, 240, 245) },
-			{ name = "Purple", color = Color3.fromRGB(160, 60, 240) },
 			{ name = "Yellow", color = Color3.fromRGB(255, 225, 40) },
+			{ name = "Green",  color = Color3.fromRGB(40, 220, 80) },
 			{ name = "Blue",   color = Color3.fromRGB(40, 110, 255) },
-			{ name = "Galaxy", color = Color3.fromRGB(100, 60, 220), look = "galaxy", btnGradient = GALAXY_SEQ },
+			{ name = "Purple", color = Color3.fromRGB(160, 60, 240) },
+			{ name = "Pink",   color = Color3.fromRGB(255, 120, 190) },
 		}
-		for _, e in ipairs(UI_COLORS) do e.noSuffix = true end
-		local byName = {}
-		for _, e in ipairs(UI_COLORS) do byName[e.name] = e end
-		colorScroll(uiPage, uiNext, "", function(entry)
+		swatchGrid(uiPage, uiNext, UI_COLORS, function(entry)
 			applyTheme(entry.look or entry.color, entry.name)
-		end, uiButtons, UI_COLORS)
+		end, uiButtons)
 
 		buildPicker(uiPage, uiNext, function(c)
 			applyTheme(c, nil)
 		end)
+
+		startTheme = function()
+			local pick = UI_COLORS[1]
+			for _, e in ipairs(UI_COLORS) do
+				if string.lower(e.name) == string.lower(tostring(DEFAULT_THEME)) then
+					pick = e
+					break
+				end
+			end
+			applyTheme(pick.look or pick.color, pick.name)
+		end
 	end
 
-	-- shared status lines + note + footer + credit (below the page)
-	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(150, 150, 170), 30)
+	-- shared note + footer + credit (below the pages)
+	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(176, 178, 200), 26)
 	noteLabel.TextXAlignment = Enum.TextXAlignment.Left
 	noteLabel.TextYAlignment = Enum.TextYAlignment.Top
 	noteLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
 	noteLabel.TextStrokeTransparency = 0.5
 
-	local footer = Instance.new("Frame")
-	footer.LayoutOrder = nextOrder()
-	footer.Size = UDim2.new(1, 0, 0, 18)
-	footer.BackgroundTransparency = 1
-	footer.Parent = content
 	local hint = Instance.new("TextLabel")
-	hint.Size = UDim2.new(0.6, 0, 1, 0)
+	hint.LayoutOrder = nextOrder()
+	hint.Size = UDim2.new(1, 0, 0, 14)
 	hint.BackgroundTransparency = 1
-	hint.Font = BUBBLY_FONT
-	hint.TextSize = 11
-	hint.TextColor3 = Color3.fromRGB(150, 152, 168)
-	hint.TextStrokeColor3 = Color3.new(0, 0, 0)
-	hint.TextStrokeTransparency = 0.5
+	styleText(hint, 11)
+	hint.TextColor3 = Color3.fromRGB(150, 152, 176)
+	hint.TextStrokeTransparency = 0.6
 	hint.TextXAlignment = Enum.TextXAlignment.Left
 	hint.Text = "RightShift = hide / show"
-	hint.Parent = footer
-	local handle = Instance.new("TextLabel")
-	handle.Size = UDim2.new(0.4, 0, 1, 0)
-	handle.Position = UDim2.new(0.6, 0, 0, 0)
-	handle.BackgroundTransparency = 1
-	handle.Font = BUBBLY_FONT
-	handle.TextSize = 15
-	handle.TextColor3 = Color3.new(1, 1, 1)
-	handle.TextStrokeColor3 = Color3.new(0, 0, 0)
-	handle.TextStrokeTransparency = 0.3
-	handle.TextXAlignment = Enum.TextXAlignment.Right
-	handle.Text = ""
-	handle.Parent = footer
+	hint.Parent = content
 
 	local credit = Instance.new("TextLabel")
 	credit.LayoutOrder = nextOrder()
-	credit.Size = UDim2.new(1, 0, 0, 26)
+	credit.Size = UDim2.new(1, 0, 0, 24)
 	credit.BackgroundTransparency = 1
-	credit.Font = BUBBLY_FONT
-	credit.TextSize = 17
-	credit.TextColor3 = Color3.new(1, 1, 1)
-	credit.TextStrokeColor3 = Color3.new(0, 0, 0)
-	credit.TextStrokeTransparency = 0.3
+	styleText(credit, 17)
 	credit.Text = "made by: FearVesta"
 	credit.Parent = content
+	local creditGrad = gradient(credit, nil, 0)
+	onTheme(function(T)
+		creditGrad.Color = T.titleSeq
+	end)
 
 	-- SIDE TAB BUTTONS
 	local tabBgs = {}
@@ -4297,66 +4935,70 @@ local function buildGui()
 	}
 	for i, def in ipairs(tabDefs) do
 		local key = def[1]
-		local bg, tb, holder = makeGlassButton(sidebar, i, def[2], Color3.fromRGB(84, 84, 100), nil, function()
+		local bg = makeTab(sidebar, i, def[2], function()
 			showTab(key)
 		end)
-		holder.Size = UDim2.new(1, 0, 0, 44)
-		tb.TextWrapped = true
 		tabBgs[key] = bg
-		table.insert(UI.feature, bg)
 	end
 	showTab("scopes")
 
+	---------------------------------------------------------------
+	-- "ARE YOU SURE?" cover
+	---------------------------------------------------------------
 	local confirm = Instance.new("Frame")
 	confirm.Name = "ConfirmClose"
 	confirm.Size = UDim2.new(1, 0, 1, 0)
-	confirm.BackgroundColor3 = Color3.fromRGB(2, 2, 5)
-	confirm.BackgroundTransparency = 0.3
+	confirm.BackgroundColor3 = Color3.fromRGB(3, 2, 10)
+	confirm.BackgroundTransparency = 0.18
 	confirm.BorderSizePixel = 0
 	confirm.Active = true
 	confirm.Visible = false
 	confirm.ZIndex = 20
 	confirm.Parent = frame
-	Instance.new("UICorner", confirm).CornerRadius = UDim.new(0, 16)
+	corner(confirm, FRAME_R)
 
 	local confirmText = Instance.new("TextLabel")
 	confirmText.AnchorPoint = Vector2.new(0.5, 0.5)
-	confirmText.Position = UDim2.new(0.5, 0, 0.35, 0)
-	confirmText.Size = UDim2.new(1, -24, 0, 50)
+	confirmText.Position = UDim2.new(0.5, 0, 0.36, 0)
+	confirmText.Size = UDim2.new(1, -24, 0, 34)
 	confirmText.BackgroundTransparency = 1
-	confirmText.Font = BUBBLY_FONT
-	confirmText.TextSize = 20
-	confirmText.TextWrapped = true
-	confirmText.TextColor3 = Color3.new(1, 1, 1)
-	confirmText.TextStrokeColor3 = Color3.new(0, 0, 0)
-	confirmText.TextStrokeTransparency = 0.3
+	styleText(confirmText, 24)
 	confirmText.Text = "ARE YOU SURE?"
 	confirmText.ZIndex = 21
 	confirmText.Parent = confirm
+	local confirmTextGrad = gradient(confirmText, nil, 0)
 
-	local function confirmButton(text, xScale, bg)
-		local b = Instance.new("TextButton")
-		b.AnchorPoint = Vector2.new(0.5, 0.5)
-		b.Position = UDim2.new(xScale, 0, 0.7, 0)
-		b.Size = UDim2.new(0.3, 0, 0, 34)
-		b.BackgroundColor3 = bg
-		b.BackgroundTransparency = 0.25
-		b.BorderSizePixel = 0
-		photoText(b, 15)
-		b.Text = text
-		b.ZIndex = 21
-		b.Parent = confirm
-		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
-		local s = Instance.new("UIStroke")
-		s.Color = BUTTON_OUTLINE
-		s.Transparency = 0.45
-		s.Thickness = 1
-		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		s.Parent = b
-		return b
-	end
-	local yesBtn = confirmButton("YES", 0.3, Color3.fromRGB(125, 30, 30))
-	local noBtn = confirmButton("NO", 0.7, Color3.fromRGB(38, 40, 54))
+	local confirmSub = Instance.new("TextLabel")
+	confirmSub.AnchorPoint = Vector2.new(0.5, 0.5)
+	confirmSub.Position = UDim2.new(0.5, 0, 0.36, 30)
+	confirmSub.Size = UDim2.new(1, -40, 0, 30)
+	confirmSub.BackgroundTransparency = 1
+	styleText(confirmSub, 12)
+	confirmSub.TextColor3 = Color3.fromRGB(176, 178, 200)
+	confirmSub.TextWrapped = true
+	confirmSub.Text = "This only closes the menu. Your colours stay on the gun."
+	confirmSub.ZIndex = 21
+	confirmSub.Parent = confirm
+	onTheme(function(T)
+		confirmTextGrad.Color = T.titleSeq
+	end)
+
+	local yesBtn = makeButton(confirm, 1, "YES", { size = UDim2.new(0, 96, 0, 36), tint = Color3.fromRGB(150, 28, 42),
+		onClick = function()
+			if env.VoidscopeRecolorCleanup then
+				pcall(env.VoidscopeRecolorCleanup)
+			elseif gui then
+				gui:Destroy()
+			end
+		end })
+	yesBtn.holder.AnchorPoint = Vector2.new(0.5, 0.5)
+	yesBtn.holder.Position = UDim2.new(0.3, 0, 0.7, 0)
+	yesBtn.holder.ZIndex = 21
+	local noBtn = makeButton(confirm, 2, "NO", { size = UDim2.new(0, 96, 0, 36), fill = "accent",
+		onClick = function() confirm.Visible = false end })
+	noBtn.holder.AnchorPoint = Vector2.new(0.5, 0.5)
+	noBtn.holder.Position = UDim2.new(0.7, 0, 0.7, 0)
+	noBtn.holder.ZIndex = 21
 
 	-- the YES / NO cover must not stop the menu from moving, so it drags the menu itself
 	local confirmDrag = nil
@@ -4381,6 +5023,9 @@ local function buildGui()
 		if confirmDrag and isPressInput(input) then confirmDrag = nil end
 	end)
 
+	---------------------------------------------------------------
+	-- MINIMISED LOGO (with a spinning neon ring)
+	---------------------------------------------------------------
 	local minimised = false
 	local imageId = loadIconImage()
 	local icon
@@ -4393,11 +5038,11 @@ local function buildGui()
 	else
 		icon = Instance.new("TextButton")
 		icon.AutoButtonColor = false
-		icon.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		icon.BackgroundColor3 = Color3.fromRGB(4, 3, 12)
 		icon.Font = BUBBLY_FONT
 		icon.Text = "vesta"
 		icon.TextSize = 22
-		icon.TextColor3 = Color3.fromRGB(215, 218, 228)
+		icon.TextColor3 = Color3.fromRGB(225, 225, 240)
 		icon.TextStrokeColor3 = Color3.fromRGB(90, 94, 110)
 		icon.TextStrokeTransparency = 0.4
 	end
@@ -4409,12 +5054,19 @@ local function buildGui()
 	icon.Visible = false
 	pcall(function() icon.Draggable = true end)
 	icon.Parent = gui
-	Instance.new("UICorner", icon).CornerRadius = UDim.new(0, 12)
-	local iconStroke = Instance.new("UIStroke")
-	iconStroke.Color = MENU_OUTLINE
-	iconStroke.Thickness = 1
-	iconStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	iconStroke.Parent = icon
+	corner(icon, 12)
+	local iconStroke = stroke(icon, WHITE, 2.2, 0)
+	local iconGrad = gradient(iconStroke, nil, 0)
+	spin(iconGrad, 90)
+	local iconGlow = stroke(icon, WHITE, 7, 0.85)
+	local iconGlowGrad = gradient(iconGlow, nil, 0)
+	spin(iconGlowGrad, 90)
+	local iconScale = Instance.new("UIScale")
+	iconScale.Parent = icon
+	onTheme(function(T)
+		iconGrad.Color = T.border
+		iconGlowGrad.Color = T.border
+	end)
 
 	minBtn.MouseButton1Click:Connect(function()
 		minimised = true
@@ -4439,22 +5091,120 @@ local function buildGui()
 	closeBtn.MouseButton1Click:Connect(function()
 		confirm.Visible = true
 	end)
-	noBtn.MouseButton1Click:Connect(function()
-		confirm.Visible = false
-	end)
-	yesBtn.MouseButton1Click:Connect(function()
-		if env.VoidscopeRecolorCleanup then
-			pcall(env.VoidscopeRecolorCleanup)
-		elseif gui then
-			gui:Destroy()
-		end
-	end)
 
 	connect(UserInputService.InputBegan, function(input, processed)
 		if processed then return end
 		if input.KeyCode == Enum.KeyCode.RightShift then
 			local target = minimised and icon or frame
 			target.Visible = not target.Visible
+		end
+	end)
+
+	---------------------------------------------------------------
+	-- ANIMATION LOOP (about 30 updates a second, skipped while the menu is hidden)
+	---------------------------------------------------------------
+	local clock0 = os.clock()
+	local acc = 0
+	local moonPhi = math.rad(-22)
+	connect(RunService.RenderStepped, function(dt)
+		acc += dt
+		if acc < 1 / 30 then return end
+		local stepT = acc
+		acc = 0
+		if not (frame.Visible or icon.Visible) then return end
+		local t = os.clock() - clock0
+		local T = UI.T
+		if not T then return end
+
+		for _, sp in ipairs(spinners) do
+			if sp.g.Enabled then
+				sp.rot = (sp.rot + sp.speed * stepT) % 360
+				sp.g.Rotation = sp.rot
+			end
+		end
+		if icon.Visible then
+			iconScale.Scale = 1 + 0.025 * math.sin(t * 2.2)
+		end
+		if not frame.Visible then return end
+
+		-- shimmer sweeping across the title and the credit
+		titleGrad.Offset = Vector2.new((t * 0.45) % 2 - 1, 0)
+		creditGrad.Offset = Vector2.new((t * 0.45 + 0.8) % 2 - 1, 0)
+		sparkle.Rotation = (t * 40) % 360
+		local twinkle = 0.85 + 0.15 * math.sin(t * 3)
+		sparkle.Size = UDim2.new(0, 18 * twinkle, 0, 18 * twinkle)
+
+		-- the little moon circling the planet (goes behind it on the far side)
+		local th = t * 1.3
+		local mx, my = 34 * math.cos(th), 10 * math.sin(th)
+		local X = mx * math.cos(moonPhi) - my * math.sin(moonPhi)
+		local Y = mx * math.sin(moonPhi) + my * math.cos(moonPhi)
+		moon.Position = UDim2.new(0.5, X, 0.5, Y)
+		moon.ZIndex = (math.sin(th) < 0) and 2 or 5
+
+		if MENU_FX then
+			local W = WIDTH + TABW
+			local H = frame.AbsoluteSize.Y / guiScale.Scale
+			for _, nb in ipairs(nebs) do
+				nb.f.Position = UDim2.new(nb.x + math.sin(t * 0.12 + nb.ph) * 0.07, 0, nb.y + math.cos(t * 0.1 + nb.ph * 1.3) * 0.05, 0)
+			end
+			for _, st in ipairs(starList) do
+				if st.on then
+					st.y = st.y - st.sp * stepT
+					if st.y < -0.02 then
+						st.y = 1.02
+						st.x = math.random()
+					end
+					st.f.Position = UDim2.new(st.x, 0, st.y, 0)
+					st.f.BackgroundTransparency = 0.12 + 0.75 * (0.5 + 0.5 * math.sin(t * st.tw + st.ph))
+				end
+			end
+			if T.galaxy then
+				for _, sh in ipairs(shooters) do
+					if not sh.active then
+						if t >= sh.nextAt then
+							sh.active = true
+							sh.t0 = t
+							sh.x0 = W * (0.05 + math.random() * 0.6)
+							sh.y0 = H * (math.random() * 0.45)
+							sh.f.Visible = true
+						end
+					else
+						local p = (t - sh.t0) / 0.8
+						if p >= 1 then
+							sh.active = false
+							sh.f.Visible = false
+							sh.nextAt = t + 2 + math.random() * 5
+						else
+							local travel = 230 * p
+							sh.f.Position = UDim2.new(0, sh.x0 + travel * 0.883, 0, sh.y0 + travel * 0.469)
+							sh.f.BackgroundTransparency = 1 - math.sin(p * math.pi)
+						end
+					end
+				end
+			else
+				for _, sh in ipairs(shooters) do
+					sh.active = false
+					sh.f.Visible = false
+				end
+			end
+		end
+	end)
+
+	---------------------------------------------------------------
+	-- start: pick the opening theme, then pop the menu in once the loading screen is gone
+	---------------------------------------------------------------
+	startTheme()
+	task.spawn(function()
+		local waited = 0
+		while env.VestaLoaderGui and waited < 10 do
+			task.wait(0.1)
+			waited += 0.1
+		end
+		if gui and gui.Parent then
+			pcall(function()
+				TweenService:Create(guiScale, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = GUI_SCALE }):Play()
+			end)
 		end
 	end)
 end
