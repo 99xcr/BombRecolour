@@ -315,7 +315,7 @@ local SHOT_RADIUS = 30           -- studs from you within which a new effect cou
 local OVERLAY_TRANSPARENCY = 0.6 -- only used if the texture tint isn't supported (colour wash)
 local BUBBLY_FONT = Enum.Font.FredokaOne   -- bubbly menu font used everywhere (try Enum.Font.GothamBlack for a sharper look)
 local GUI_SCALE = 1.25       -- how big the whole menu is (1 = old size, 1.5 = even bigger)
-local DEFAULT_THEME = "Galaxy" -- the menu look when it opens: Galaxy, Black, White, Red, Orange, Yellow, Green, Blue, Purple or Pink
+local DEFAULT_THEME = "Black" -- the menu look when it opens: Galaxy, Black, White, Red, Orange, Yellow, Green, Blue, Purple or Pink
 local MENU_FX = true         -- animated nebula / stars / shooting stars behind the menu (set false for a lighter menu on weak devices)
 local MENU_OUTLINE = Color3.fromRGB(70, 74, 88)
 local BUTTON_OUTLINE = Color3.fromRGB(120, 125, 142)  -- glass rim around every button
@@ -3863,7 +3863,7 @@ local function buildGui()
 	end
 
 	---------------------------------------------------------------
-	-- LEFT SIDE TABS + the little planet with an orbiting moon
+	-- LEFT SIDE TABS + the glass VESTA wordmark
 	---------------------------------------------------------------
 	local sidebar = Instance.new("Frame")
 	sidebar.Name = "Tabs"
@@ -3890,66 +3890,139 @@ local function buildGui()
 		sideGrad.Color = T.accentSeq
 	end)
 
-	local orbit = Instance.new("Frame")
-	orbit.Name = "Orbit"
-	orbit.AnchorPoint = Vector2.new(0.5, 1)
-	orbit.Position = UDim2.new(0, 8 + (TABW - 14) / 2, 1, -18)
-	orbit.Size = UDim2.new(0, 76, 0, 76)
-	orbit.BackgroundTransparency = 1
-	orbit.ZIndex = 3
-	orbit.Parent = frame
-	local planetGlow = Instance.new("Frame")
-	planetGlow.AnchorPoint = Vector2.new(0.5, 0.5)
-	planetGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
-	planetGlow.Size = UDim2.new(0, 60, 0, 60)
-	planetGlow.BackgroundTransparency = 0.86
-	planetGlow.BorderSizePixel = 0
-	planetGlow.ZIndex = 1
-	planetGlow.Parent = orbit
-	round(planetGlow)
-	local planet = Instance.new("Frame")
-	planet.AnchorPoint = Vector2.new(0.5, 0.5)
-	planet.Position = UDim2.new(0.5, 0, 0.5, 0)
-	planet.Size = UDim2.new(0, 30, 0, 30)
-	planet.BackgroundColor3 = WHITE
-	planet.BorderSizePixel = 0
-	planet.ZIndex = 3
-	planet.Parent = orbit
-	round(planet)
-	local planetGrad = gradient(planet, nil, 40)
-	spin(planetGrad, 25)
-	local ringFrame = Instance.new("Frame")
-	ringFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-	ringFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-	ringFrame.Size = UDim2.new(0, 68, 0, 20)
-	ringFrame.BackgroundTransparency = 1
-	ringFrame.Rotation = -22
-	ringFrame.ZIndex = 4
-	ringFrame.Parent = orbit
-	round(ringFrame)
-	local ringStroke = stroke(ringFrame, WHITE, 2.2, 0.15)
-	local ringGrad = gradient(ringStroke, nil, 0)
-	local moon = Instance.new("Frame")
-	moon.AnchorPoint = Vector2.new(0.5, 0.5)
-	moon.Size = UDim2.new(0, 7, 0, 7)
-	moon.BackgroundColor3 = WHITE
-	moon.BorderSizePixel = 0
-	moon.ZIndex = 5
-	moon.Parent = orbit
-	round(moon)
+	-- VESTA wordmark: bubbly glass letters tinted by the theme, inside a glass pill at the bottom of the tabs
+	local WORD = "VESTA"
+	local mark = Instance.new("Frame")
+	mark.Name = "Wordmark"
+	mark.AnchorPoint = Vector2.new(0.5, 1)
+	mark.Position = UDim2.new(0, 8 + (TABW - 14) / 2, 1, -16)
+	mark.Size = UDim2.new(0, TABW - 20, 0, 54)
+	mark.BackgroundColor3 = WHITE
+	mark.BackgroundTransparency = 0.8
+	mark.BorderSizePixel = 0
+	mark.ZIndex = 3
+	mark.Parent = frame
+	corner(mark, 20)
+	local markFill = gradient(mark, nil, 90)
+	local markRim = stroke(mark, WHITE, 1.8, 0.1)
+	local markRimGrad = gradient(markRim, nil, 0)
+	spin(markRimGrad, 70)
+
+	-- CanvasGroup so the shine and bubbles are clipped by the pill's rounded corners
+	local glass = Instance.new("CanvasGroup")
+	glass.Size = UDim2.new(1, 0, 1, 0)
+	glass.BackgroundTransparency = 1
+	glass.BorderSizePixel = 0
+	glass.ZIndex = 1
+	glass.Parent = mark
+	corner(glass, 20)
+
+	local band = Instance.new("Frame") -- glossy highlight across the top of the pill
+	band.Position = UDim2.new(0, 6, 0, 3)
+	band.Size = UDim2.new(1, -12, 0.38, 0)
+	band.BackgroundColor3 = WHITE
+	band.BorderSizePixel = 0
+	band.ZIndex = 1
+	band.Parent = glass
+	corner(band, 14)
+	local bandGrad = gradient(band, nil, 90)
+	bandGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.5),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+
+	local wordBubbles = {}
+	for k = 1, 5 do
+		local sz = 3 + (k % 3) * 2
+		local bub = Instance.new("Frame")
+		bub.AnchorPoint = Vector2.new(0.5, 0.5)
+		bub.Size = UDim2.new(0, sz, 0, sz)
+		bub.BackgroundColor3 = WHITE
+		bub.BackgroundTransparency = 0.78
+		bub.BorderSizePixel = 0
+		bub.ZIndex = 2
+		bub.Parent = glass
+		round(bub)
+		stroke(bub, WHITE, 1, 0.35)
+		wordBubbles[k] = { f = bub, x = 0.08 + 0.21 * (k - 1), ph = k * 1.7 }
+	end
+
+	local function wordLabel(parent, text)
+		local l = Instance.new("TextLabel")
+		l.Size = UDim2.new(1, 0, 1, 0)
+		l.BackgroundTransparency = 1
+		l.Font = BUBBLY_FONT
+		l.TextSize = 24
+		l.Text = text
+		l.TextColor3 = WHITE
+		l.Parent = parent
+		return l
+	end
+	local wordLetters = {}
+	for i = 1, #WORD do
+		local ch = string.sub(WORD, i, i)
+		local lf = Instance.new("Frame")
+		lf.AnchorPoint = Vector2.new(0.5, 0.5)
+		lf.Position = UDim2.new((i - 0.5) / #WORD, 0, 0.5, 0)
+		lf.Size = UDim2.new(0, 18, 0, 30)
+		lf.BackgroundTransparency = 1
+		lf.ZIndex = 3
+		lf.Parent = glass
+		local shadow = wordLabel(lf, ch)          -- soft tinted shadow = depth
+		shadow.Position = UDim2.new(0, 0, 0, 2)
+		shadow.TextTransparency = 0.45
+		shadow.ZIndex = 1
+		local face = wordLabel(lf, ch)            -- see-through body, light on top and deeper below, with a bright rim
+		face.TextTransparency = 0.1
+		face.ZIndex = 2
+		local faceGrad = gradient(face, nil, 90)
+		local faceRim = Instance.new("UIStroke")
+		faceRim.Thickness = 2
+		faceRim.Transparency = 0.2
+		faceRim.Parent = face
+		local gloss = wordLabel(lf, ch)           -- white shine that only shows on the top half of each letter
+		gloss.ZIndex = 3
+		local glossGrad = gradient(gloss, nil, 90)
+		glossGrad.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.3),
+			NumberSequenceKeypoint.new(0.42, 0.55),
+			NumberSequenceKeypoint.new(0.5, 1),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		wordLetters[i] = { f = lf, shadow = shadow, grad = faceGrad, rim = faceRim }
+	end
+
+	local glint = Instance.new("Frame") -- shiny streak that sweeps across the glass
+	glint.AnchorPoint = Vector2.new(0.5, 0.5)
+	glint.Position = UDim2.new(-0.3, 0, 0.5, 0)
+	glint.Size = UDim2.new(0, 12, 1.8, 0)
+	glint.Rotation = 20
+	glint.BackgroundColor3 = WHITE
+	glint.BorderSizePixel = 0
+	glint.ZIndex = 6
+	glint.Parent = glass
+	local glintGrad = gradient(glint, nil, 0)
+	glintGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.5, 0.55),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+
 	onTheme(function(T)
-		planetGlow.BackgroundColor3 = T.a1
-		planetGrad.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, lighten(T.a1, 0.35)),
-			ColorSequenceKeypoint.new(0.5, T.a2),
-			ColorSequenceKeypoint.new(1, shade(T.a1, 0.75)),
-		})
-		ringGrad.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, T.a1),
-			ColorSequenceKeypoint.new(0.5, WHITE),
-			ColorSequenceKeypoint.new(1, T.a2),
-		})
-		moon.BackgroundColor3 = lighten(T.a2, 0.5)
+		markFill.Color = ColorSequence.new(lighten(T.a1, 0.35), shade(T.a2, 0.35))
+		markRimGrad.Color = T.border
+		for _, lt in ipairs(wordLetters) do
+			lt.grad.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, lighten(T.a1, 0.8)),
+				ColorSequenceKeypoint.new(0.5, T.a1),
+				ColorSequenceKeypoint.new(1, shade(T.a2, 0.2)),
+			})
+			lt.rim.Color = lighten(T.a1, 0.5)
+			lt.shadow.TextColor3 = shade(T.a1, 0.7)
+		end
+		for _, wb in ipairs(wordBubbles) do
+			wb.f.BackgroundColor3 = lighten(T.a1, 0.5)
+		end
 	end)
 
 	---------------------------------------------------------------
@@ -5105,7 +5178,6 @@ local function buildGui()
 	---------------------------------------------------------------
 	local clock0 = os.clock()
 	local acc = 0
-	local moonPhi = math.rad(-22)
 	connect(RunService.RenderStepped, function(dt)
 		acc += dt
 		if acc < 1 / 30 then return end
@@ -5134,13 +5206,15 @@ local function buildGui()
 		local twinkle = 0.85 + 0.15 * math.sin(t * 3)
 		sparkle.Size = UDim2.new(0, 18 * twinkle, 0, 18 * twinkle)
 
-		-- the little moon circling the planet (goes behind it on the far side)
-		local th = t * 1.3
-		local mx, my = 34 * math.cos(th), 10 * math.sin(th)
-		local X = mx * math.cos(moonPhi) - my * math.sin(moonPhi)
-		local Y = mx * math.sin(moonPhi) + my * math.cos(moonPhi)
-		moon.Position = UDim2.new(0.5, X, 0.5, Y)
-		moon.ZIndex = (math.sin(th) < 0) and 2 or 5
+		-- the glass VESTA word: letters bob and tilt, a glint sweeps across, bubbles float
+		for i, lt in ipairs(wordLetters) do
+			lt.f.Position = UDim2.new((i - 0.5) / #wordLetters, 0, 0.5, math.sin(t * 3 + i * 0.7) * 2.5)
+			lt.f.Rotation = math.sin(t * 2 + i * 1.1) * 5
+		end
+		glint.Position = UDim2.new(-0.3 + ((t * 0.35) % 1.8) * 0.9, 0, 0.5, 0)
+		for _, wb in ipairs(wordBubbles) do
+			wb.f.Position = UDim2.new(wb.x, 0, 0.5 + math.sin(t * 0.9 + wb.ph) * 0.38, 0)
+		end
 
 		if MENU_FX then
 			local W = WIDTH + TABW
