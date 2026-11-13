@@ -209,6 +209,8 @@ local TRAIL_END = "back"     -- "back" = comes off the very back of the gun, "fr
 local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun, set this to true
 local TRAIL_DROP = 1.4       -- how far to move the trail DOWN from where it is now (studs). Bigger = lower, 0 = old position
 local TRAIL_BACK = 0.7       -- how far to move the trail BACKWARDS (studs, away from where you aim). Bigger = further back, 0 = no change
+local TRAIL_DROP_GINGER = 0.9  -- same as TRAIL_DROP but only for the gingerscope (smaller = higher up)
+local TRAIL_BACK_GINGER = 0.15 -- same as TRAIL_BACK but only for the gingerscope (smaller = closer to the gun)
 
 -- EDITABLE IMAGE SPEED SETTINGS (only used by the built-in backup textures, see SKIN_TEXTURES below)
 local MAX_TEX = 512              -- sharper; built once in the background so it doesn't hurt switching (384 = lighter)
@@ -1252,7 +1254,8 @@ local function colorFor(inst)
 	local mode = selected and selected.mode
 	if mode == "rainbow" or (mode == "texture" and selected.texStyle == "rainbow") then
 		local t = rainbowT[inst] or ((os.clock() * 0.6) % 1)
-		return Color3.fromHSV((0.65 - t * 0.9 + os.clock() * RAINBOW_SPIN) % 1, 0.9, 1)
+		local sat = (selected.ginger and 1) or 0.9 -- gingerscope chroma is fully saturated
+		return Color3.fromHSV((0.65 - t * 0.9 + os.clock() * RAINBOW_SPIN) % 1, sat, 1)
 	elseif mode == "pearl" then
 		local t = rainbowT[inst]
 		if not t or flatSpread[inst] then return Color3.fromRGB(238, 238, 244) end
@@ -1344,7 +1347,7 @@ local function setSurfaceTint(mp, color)
 	pcall(function() tex = mp.TextureID end)
 	if (type(tex) ~= "string" or tex == "") and GINGER.isGingerMesh(mp) then
 		-- the gingerscope has no texture id of its own, so a plain colour (Black, Chroma...) is tinted over one of the gingerscope pictures
-		tex = resolveSkin("g_red")
+		tex = (selected and selected.mode == "rainbow" and resolveSkin("g_white")) or resolveSkin("g_red")
 	end
 	if type(tex) ~= "string" or tex == "" then
 		return "notex"
@@ -1354,7 +1357,9 @@ local function setSurfaceTint(mp, color)
 		cache = {}
 		saCache[mp] = cache
 	end
-	local sa = cache.tint
+	-- one appearance per picture, so Chroma (light picture) and Black (red picture) never reuse each other's
+	local tintKey = "tint_" .. tostring(tex)
+	local sa = cache[tintKey]
 	if not sa then
 		sa = Instance.new("SurfaceAppearance")
 		sa.Name = "VSSurface"
@@ -1363,11 +1368,11 @@ local function setSurfaceTint(mp, color)
 			return "fail"
 		end
 		ours[sa] = true
-		cache.tint = sa
+		cache[tintKey] = sa
 	end
 	if not pcall(function() sa.Color = color end) then
 		pcall(function() sa:Destroy() end)
-		cache.tint = nil
+		cache[tintKey] = nil
 		return "fail"
 	end
 	sa.Parent = mp
@@ -2551,20 +2556,23 @@ local function buildTrail(tool, allParts, gripPos)
 	if not ref then return end
 	print("[Voidscope Recolor] trail tip = " .. how .. " (on part '" .. ref.Name .. "')")
 	-- moves the whole trail DOWN (same spot along the gun, just lower)
+	local isGingerTrail = selected ~= nil and selected.ginger == true
+	local dropAmt = isGingerTrail and TRAIL_DROP_GINGER or TRAIL_DROP
+	local backAmt = isGingerTrail and TRAIL_BACK_GINGER or TRAIL_BACK
 	local upLocal = ref.CFrame:VectorToObjectSpace(Vector3.new(0, 1, 0))
-	local drop = upLocal.Magnitude > 0.01 and (upLocal.Unit * -TRAIL_DROP) or Vector3.zero
+	local drop = upLocal.Magnitude > 0.01 and (upLocal.Unit * -dropAmt) or Vector3.zero
 	local a0 = Instance.new("Attachment")
 	a0.Name = "VSTrail"
 	-- moves the whole trail BACKWARDS (away from the way you are aiming), same height
 	local backLocal = Vector3.zero
-	if TRAIL_BACK ~= 0 then
+	if backAmt ~= 0 then
 		local char = LocalPlayer.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
 		local cam = Workspace.CurrentCamera
 		local look = (root and root.CFrame.LookVector) or (cam and cam.CFrame.LookVector)
 		if look then
 			local v = ref.CFrame:VectorToObjectSpace(-look)
-			if v.Magnitude > 0.01 then backLocal = v.Unit * TRAIL_BACK end
+			if v.Magnitude > 0.01 then backLocal = v.Unit * backAmt end
 		end
 	end
 	a0.Position = tip + side + drop + backLocal
@@ -3245,10 +3253,13 @@ local function parseHex(s)
 	return Color3.fromRGB(math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256)
 end
 
+-- menu theme colours (changed by the UI tab)
+local UI = { accent = BUTTON_SELECTED, on = Color3.fromRGB(0, 105, 190) }
+
 local function setOutline(bg, on)
 	local stroke = bg:FindFirstChildOfClass("UIStroke")
 	if stroke then
-		stroke.Color = on and BUTTON_SELECTED or BUTTON_OUTLINE
+		stroke.Color = on and UI.accent or BUTTON_OUTLINE
 		stroke.Thickness = on and 2.5 or 1
 		stroke.Transparency = on and 0 or 0.45
 	end
@@ -3258,11 +3269,11 @@ local function updateStatus()
 	for _, t in ipairs(toggleUI) do
 		if t.glassTb then t.glassTb.Text = glassOverlay and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF" end
 		if t.glassBg then
-			t.glassBg.BackgroundColor3 = glassOverlay and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+			t.glassBg.BackgroundColor3 = glassOverlay and UI.on or Color3.fromRGB(78, 80, 92)
 		end
 		if t.trailTb then t.trailTb.Text = trailOn and "TRAIL: ON" or "TRAIL: OFF" end
 		if t.trailBg then
-			t.trailBg.BackgroundColor3 = trailOn and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+			t.trailBg.BackgroundColor3 = trailOn and UI.on or Color3.fromRGB(78, 80, 92)
 		end
 	end
 	if statusLabel then
@@ -3561,6 +3572,26 @@ local function buildGui()
 		NumberSequenceKeypoint.new(1, 1),
 	})
 	glossGradient.Parent = gloss
+
+	local stars = Instance.new("Frame")
+	stars.Name = "Stars"
+	stars.Size = UDim2.new(1, 0, 1, 0)
+	stars.BackgroundTransparency = 1
+	stars.ClipsDescendants = true
+	stars.ZIndex = 1
+	stars.Visible = false
+	stars.Parent = frame
+	Instance.new("UICorner", stars).CornerRadius = UDim.new(0, 16)
+	for _ = 1, 45 do
+		local d = Instance.new("Frame")
+		local sz = math.random(1, 2)
+		d.Size = UDim2.new(0, sz, 0, sz)
+		d.Position = UDim2.new(math.random(), 0, math.random(), 0)
+		d.BackgroundColor3 = Color3.new(1, 1, 1)
+		d.BackgroundTransparency = 0.2 + math.random() * 0.5
+		d.BorderSizePixel = 0
+		d.Parent = stars
+	end
 
 	-- LEFT SIDE TABS
 	local sidebar = Instance.new("Frame")
@@ -4110,6 +4141,94 @@ local function buildGui()
 
 	end
 
+	-- PAGE 3: UI (changes the colour of the menu itself, with presets and a hex / colour picker)
+	do
+		local uiPage, uiNext = newPage("ui")
+
+		local FRAME_SHAPE = {
+			{ 0, 0.30 }, { 0.1, 0.18 }, { 0.24, 0.16 }, { 0.31, 0.45 }, { 0.37, 0.22 }, { 0.55, 0.16 },
+			{ 0.67, 0.42 }, { 0.73, 0.20 }, { 0.88, 0.17 }, { 0.95, 0.40 }, { 1, 0.20 },
+		}
+		local GALAXY_FRAME = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(14, 6, 40)),
+			ColorSequenceKeypoint.new(0.3, Color3.fromRGB(52, 20, 110)),
+			ColorSequenceKeypoint.new(0.55, Color3.fromRGB(16, 30, 86)),
+			ColorSequenceKeypoint.new(0.8, Color3.fromRGB(90, 30, 100)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 5, 32)),
+		})
+		-- same shape as the dark metal frame, just in the chosen colour
+		local function tintedFrame(c, k)
+			local h, s = Color3.toHSV(c)
+			local keys = {}
+			for _, p in ipairs(FRAME_SHAPE) do
+				table.insert(keys, ColorSequenceKeypoint.new(p[1], Color3.fromHSV(h, s, math.clamp(p[2] * k, 0, 1))))
+			end
+			return ColorSequence.new(keys)
+		end
+
+		local uiButtons = {}
+		local function markUi(name)
+			for n, bg in pairs(uiButtons) do setOutline(bg, n == name) end
+		end
+
+		-- look = "black" | "galaxy" | Color3
+		local function applyTheme(look, name)
+			local seq, accent, onColor = METAL_FRAME, Color3.fromRGB(235, 235, 245), Color3.fromRGB(70, 72, 86)
+			stars.Visible = false
+			if look == "galaxy" then
+				seq = GALAXY_FRAME
+				accent = Color3.fromRGB(175, 115, 255)
+				onColor = Color3.fromRGB(95, 50, 190)
+				stars.Visible = true
+			elseif typeof(look) == "Color3" then
+				local h, s, v = Color3.toHSV(look)
+				if s < 0.12 then -- white / grey
+					seq = tintedFrame(Color3.fromHSV(0, 0, 1), 3.2 * math.max(v, 0.35))
+					accent = Color3.new(1, 1, 1)
+					onColor = Color3.fromRGB(120, 122, 136)
+				else
+					seq = tintedFrame(look, 2)
+					accent = Color3.fromHSV(h, math.min(s, 0.75), 1)
+					onColor = Color3.fromHSV(h, s, 0.7)
+				end
+			end
+			glassSheen.Color = seq
+			frameStroke.Color = accent
+			frameStroke.Transparency = 0.25
+			sideStroke.Color = accent
+			sideStroke.Transparency = 0.45
+			UI.accent = accent
+			UI.on = onColor
+			markUi(name)
+			updateStatus()
+			setNote("")
+		end
+
+		sectionLabel(uiPage, uiNext, "MENU COLOUR")
+		local UI_COLORS = {
+			{ name = "Red",    color = Color3.fromRGB(255, 40, 40) },
+			{ name = "Orange", color = Color3.fromRGB(255, 130, 20) },
+			{ name = "Pink",   color = Color3.fromRGB(255, 120, 190) },
+			{ name = "Green",  color = Color3.fromRGB(40, 220, 80) },
+			{ name = "Black",  color = Color3.fromRGB(0, 0, 0), look = "black" },
+			{ name = "White",  color = Color3.fromRGB(240, 240, 245) },
+			{ name = "Purple", color = Color3.fromRGB(160, 60, 240) },
+			{ name = "Yellow", color = Color3.fromRGB(255, 225, 40) },
+			{ name = "Blue",   color = Color3.fromRGB(40, 110, 255) },
+			{ name = "Galaxy", color = Color3.fromRGB(100, 60, 220), look = "galaxy", btnGradient = GALAXY_SEQ },
+		}
+		for _, e in ipairs(UI_COLORS) do e.noSuffix = true end
+		local byName = {}
+		for _, e in ipairs(UI_COLORS) do byName[e.name] = e end
+		colorScroll(uiPage, uiNext, "", function(entry)
+			applyTheme(entry.look or entry.color, entry.name)
+		end, uiButtons, UI_COLORS)
+
+		buildPicker(uiPage, uiNext, function(c)
+			applyTheme(c, nil)
+		end)
+	end
+
 	-- shared status lines + note + footer + credit (below the page)
 	gunLabel = label(content, nextOrder(), "Gun: looking...", 11, Color3.fromRGB(190, 192, 208), 30)
 	gunLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -4183,6 +4302,7 @@ local function buildGui()
 	local tabDefs = {
 		{ "scopes", "SCOPES" },
 		{ "gingerscope", "GINGERSCOPE" },
+		{ "ui", "UI" },
 	}
 	for i, def in ipairs(tabDefs) do
 		local key = def[1]
