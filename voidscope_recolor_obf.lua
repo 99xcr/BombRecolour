@@ -383,6 +383,43 @@ GINGER.glass = { name = "Glass Gingerscope", color = GLASS.color, mode = "pearl"
 function GINGER.isName(name)
 	return string.find(string.lower(name or ""), "ginger", 1, true) ~= nil
 end
+-- Every gun is called "Gun", so the gingerscope is recognised by its MODEL instead (mesh id of the gingerscope's part)
+GINGER.MESH_ID = "15374679651"
+GINGER.cache = setmetatable({}, { __mode = "k" })
+GINGER.hidden = {} -- the game's own SurfaceAppearances we took off while a gingerscope look is showing (put back on reset)
+function GINGER.isGingerMesh(inst)
+	if not inst or not inst:IsA("MeshPart") then return false end
+	local ok, mesh = pcall(function() return inst.MeshId end)
+	return ok and type(mesh) == "string" and string.find(mesh, GINGER.MESH_ID, 1, true) ~= nil
+end
+function GINGER.toolIsGinger(tool)
+	if GINGER.cache[tool] then return true end
+	if GINGER.isName(tool.Name) then
+		GINGER.cache[tool] = true
+		return true
+	end
+	for _, d in ipairs(tool:GetDescendants()) do
+		if GINGER.isGingerMesh(d) then
+			GINGER.cache[tool] = true
+			return true
+		end
+	end
+	return false
+end
+function GINGER.fitsTool(entry, tool)
+	if not entry then return false end
+	return GINGER.toolIsGinger(tool) == (entry.ginger == true)
+end
+-- takes the game's own texture off a gingerscope part, so only our picture shows (it is put back by Reset)
+function GINGER.hideOriginal(mp, ours_)
+	if not GINGER.isGingerMesh(mp) then return end
+	for _, c in ipairs(mp:GetChildren()) do
+		if c:IsA("SurfaceAppearance") and not ours_[c] then
+			GINGER.hidden[c] = mp
+			pcall(function() c.Parent = nil end)
+		end
+	end
+end
 -- does this look (entry) belong on a gun with this name?
 function GINGER.fitsName(entry, name)
 	if not entry then return false end
@@ -393,7 +430,7 @@ end
 function GINGER.fitsInst(entry, inst)
 	if not entry then return false end
 	local tool = inst:FindFirstAncestorOfClass("Tool")
-	if tool then return GINGER.fitsName(entry, tool.Name) end
+	if tool then return GINGER.fitsTool(entry, tool) end
 	return true
 end
 function GINGER.fitsTarget(entry, target)
@@ -402,7 +439,7 @@ function GINGER.fitsTarget(entry, target)
 end
 -- does the skin picture `key` belong on this tool? (so each gun only prepares its own pictures)
 function GINGER.keyFitsTool(key, tool)
-	local toolG = GINGER.isName(tool.Name)
+	local toolG = GINGER.toolIsGinger(tool)
 	if string.sub(key, 1, 2) == "g_" then return toolG end
 	return not toolG
 end
@@ -1305,6 +1342,10 @@ end
 local function setSurfaceTint(mp, color)
 	local tex
 	pcall(function() tex = mp.TextureID end)
+	if (type(tex) ~= "string" or tex == "") and GINGER.isGingerMesh(mp) then
+		-- the gingerscope has no texture id of its own, so a plain colour (Black, Chroma...) is tinted over one of the gingerscope pictures
+		tex = resolveSkin("g_red")
+	end
 	if type(tex) ~= "string" or tex == "" then
 		return "notex"
 	end
@@ -1334,6 +1375,7 @@ local function setSurfaceTint(mp, color)
 		if o ~= sa and o.Parent then o.Parent = nil end
 	end
 	surfaces[mp] = sa
+	GINGER.hideOriginal(mp, ours)
 	return "ok"
 end
 
@@ -1958,7 +2000,7 @@ function SkinKit.prebuild(tool, onlyKey)
 	for _, d in ipairs(tool:GetDescendants()) do
 		if d:IsA("MeshPart") then
 			local ok, tex = pcall(function() return d.TextureID end)
-			if ok and type(tex) == "string" and tex ~= "" then
+			if ok and type(tex) == "string" and (tex ~= "" or GINGER.isGingerMesh(d)) then
 				for key in pairs(SKIN_TEXTURES) do
 					if (not onlyKey or key == onlyKey) and SkinKit.img[key] ~= nil and GINGER.keyFitsTool(key, tool) then pcall(SkinKit.make, d, key) end
 				end
@@ -1995,7 +2037,7 @@ function SkinKit.warm(tool)
 			if d:IsA("MeshPart") then
 				local okt, tex = pcall(function() return d.TextureID end)
 				local okm, mesh = pcall(function() return d.MeshId end)
-				if okt and okm and type(tex) == "string" and tex ~= "" then
+				if okt and okm and type(tex) == "string" and (tex ~= "" or GINGER.isGingerMesh(d)) then
 					local id = tex .. "|" .. tostring(mesh)
 					if not seen[id] and not SkinKit.warmed[id] then
 						seen[id] = true
@@ -2136,7 +2178,7 @@ function tintMesh(mp, color)
 	local skin = skinOf(selected)
 	if skin then
 		local okTex, tex = pcall(function() return mp.TextureID end)
-		if not okTex or type(tex) ~= "string" or tex == "" then return end
+		if not okTex or type(tex) ~= "string" or (tex == "" and not GINGER.isGingerMesh(mp)) then return end
 		local key = selected.skin
 		if SkinKit.img[key] == nil then
 			-- still downloading: keep what is showing (never a flat colour) and swap the moment it's ready
@@ -2147,6 +2189,7 @@ function tintMesh(mp, color)
 			return
 		end
 		if SkinKit.apply(mp, key) then
+			GINGER.hideOriginal(mp, ours)
 			removeOverlay(mp)
 			setNote("")
 		else
@@ -2621,6 +2664,10 @@ local function restoreAll()
 		pcall(function() sa:Destroy() end)
 		surfaces[mp] = nil
 	end
+	for sa, mp in pairs(GINGER.hidden) do
+		pcall(function() if mp.Parent then sa.Parent = mp end end)
+		GINGER.hidden[sa] = nil
+	end
 end
 
 local function paint(inst, color, isShot)
@@ -2628,7 +2675,7 @@ local function paint(inst, color, isShot)
 		-- texture styles / skins paint the whole look themselves, so a textured part must not add a colour tint on top.
 		-- Parts with no texture have nothing to paint them, so they get the plain colour.
 		local hasTex = false
-		pcall(function() hasTex = inst.TextureID ~= "" end)
+		pcall(function() hasTex = inst.TextureID ~= "" or GINGER.isGingerMesh(inst) end)
 		local c = (hasTex and ((selected and selected.mode == "texture") or skinOf(selected))) and Color3.new(1, 1, 1) or color
 		set(inst, "Color", c)
 		watchTexture(inst)
@@ -2712,7 +2759,7 @@ local function guardEffect(inst)
 end
 
 local function paintGun(tool)
-	if not selected or not GINGER.fitsName(selected, tool.Name) then return 0 end
+	if not selected or not GINGER.fitsTool(selected, tool) then return 0 end
 	local ref = mapRainbow(partsUnder(tool))
 	local effects = 0
 	for _, d in ipairs(tool:GetDescendants()) do
@@ -2728,7 +2775,7 @@ end
 local function gunAssetIds()
 	local ids = {}
 	for tool in pairs(hooked) do
-		if not GINGER.fitsName(selected, tool.Name) then continue end
+		if not GINGER.fitsTool(selected, tool) then continue end
 		for _, d in ipairs(tool:GetDescendants()) do
 			if d:IsA("MeshPart") then
 				local okt, tex = pcall(function() return d.TextureID end)
@@ -2749,25 +2796,12 @@ function GINGER.targetIsGinger(target)
 	local result = false
 	local tool = target:IsA("Tool") and target or target:FindFirstAncestorOfClass("Tool")
 	if tool then
-		result = GINGER.isName(tool.Name)
-	elseif GINGER.isName(target.Name) then
-		result = true
+		result = GINGER.toolIsGinger(tool)
 	else
-		local ids = {}
-		for t in pairs(hooked) do
-			if GINGER.isName(t.Name) then
-				for _, d in ipairs(t:GetDescendants()) do
-					if d:IsA("MeshPart") then
-						local okm, mesh = pcall(function() return d.MeshId end)
-						if okm and mesh ~= "" then ids[mesh] = true end
-					end
-				end
-			end
-		end
 		for _, d in ipairs(partsUnder(target)) do
-			if d:IsA("MeshPart") then
-				local okm, mesh = pcall(function() return d.MeshId end)
-				if okm and mesh ~= "" and ids[mesh] then result = true break end
+			if GINGER.isGingerMesh(d) then
+				result = true
+				break
 			end
 		end
 	end
@@ -2896,7 +2930,7 @@ local function refreshTrails()
 		return
 	end
 	for tool in pairs(hooked) do
-		if tool.Parent and tool.Parent == LocalPlayer.Character and GINGER.fitsName(selected, tool.Name) then
+		if tool.Parent and tool.Parent == LocalPlayer.Character and GINGER.fitsTool(selected, tool) then
 			ensureTrail(tool, function() return partsUnder(tool) end, handPosition)
 		else
 			removeTrail(tool)
@@ -3010,7 +3044,7 @@ end
 local function hookGun(tool)
 	if hooked[tool] then return end
 	hooked[tool] = true
-	if GINGER.isName(tool.Name) then GINGER.seen = true end
+	if GINGER.toolIsGinger(tool) then GINGER.seen = true end
 	print("[Voidscope Recolor] found gun: " .. tool:GetFullName())
 	task.delay(PREBUILD_DELAY, prebuildTextures, tool) -- builds the backup looks quietly in the background
 	task.spawn(SkinKit.prebuild, tool)
@@ -3029,7 +3063,7 @@ local function hookGun(tool)
 		guardEffect(d)
 		watchSound(d)
 		task.defer(function()
-			if selected and d.Parent and GINGER.fitsName(selected, tool.Name) then
+			if selected and d.Parent and GINGER.fitsTool(selected, tool) then
 				paint(d, colorFor(d), false)
 			end
 		end)
@@ -3069,7 +3103,7 @@ end
 for _, c in ipairs({ LocalPlayer.Character, LocalPlayer:FindFirstChildOfClass("Backpack") }) do
 	if c then
 		for _, child in ipairs(c:GetChildren()) do
-			if isGun(child) and GINGER.isName(child.Name) then GINGER.seen = true end
+			if isGun(child) and GINGER.toolIsGinger(child) then GINGER.seen = true end
 		end
 	end
 end
@@ -3167,7 +3201,7 @@ connect(Workspace.DescendantAdded, function(d)
 		if mine then
 			for _, child in ipairs(mine:GetChildren()) do
 				if child:IsA("Tool") and hooked[child] then
-					if not GINGER.fitsName(selected, child.Name) then return end
+					if not GINGER.fitsTool(selected, child) then return end
 					break
 				end
 			end
