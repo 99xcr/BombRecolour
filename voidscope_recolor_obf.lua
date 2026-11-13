@@ -210,7 +210,7 @@ local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun,
 local TRAIL_DROP = 1.4       -- how far to move the trail DOWN from where it is now (studs). Bigger = lower, 0 = old position
 local TRAIL_BACK = 0.7       -- how far to move the trail BACKWARDS (studs, away from where you aim). Bigger = further back, 0 = no change
 local TRAIL_DROP_GINGER = 0.13 -- same as TRAIL_DROP but only for the gingerscope (smaller = higher up)
-local TRAIL_BACK_GINGER = 0.25 -- same as TRAIL_BACK but only for the gingerscope (smaller = closer to the gun)
+local TRAIL_BACK_GINGER = 0    -- same as TRAIL_BACK but only for the gingerscope (smaller = closer to the gun)
 
 -- EDITABLE IMAGE SPEED SETTINGS (only used by the built-in backup textures, see SKIN_TEXTURES below)
 local MAX_TEX = 512              -- sharper; built once in the background so it doesn't hurt switching (384 = lighter)
