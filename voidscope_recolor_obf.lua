@@ -1,3 +1,7 @@
+-- wait for the game to be fully loaded first, so the script works the FIRST time you run it
+if not game:IsLoaded() then game.Loaded:Wait() end
+repeat task.wait() until game:GetService("Players").LocalPlayer
+
 -- VESTA LOADING SCREEN (black screen, bubbly title, small "loading" at the bottom)
 do
 	local Players = game:GetService("Players")
@@ -9,7 +13,7 @@ do
 	local FONT = Enum.Font.FredokaOne -- bubbly font
 	local TITLE = "VESTA RECOLOR"
 	local MIN_TIME = 2.5   -- shortest time the screen shows (seconds)
-	local MAX_TIME = 12    -- gives up waiting after this long and fades anyway
+	local MAX_TIME = 7     -- gives up waiting after this long and fades anyway
 
 	local old = genv.VestaLoaderGui
 	if old then pcall(function() old:Destroy() end) end
@@ -203,7 +207,8 @@ local TRAIL_LIFETIME = 0.6   -- how long the trail lingers (seconds)
 local TRAIL_WIDTH = 0.12     -- how thick the trail is (studs), smaller = thinner
 local TRAIL_END = "back"     -- "back" = comes off the very back of the gun, "front" = off the tip
 local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun, set this to true
-local TRAIL_DROP = 1.2       -- how far to move the trail DOWN from where it is now (studs). Bigger = lower, 0 = old position
+local TRAIL_DROP = 1.4       -- how far to move the trail DOWN from where it is now (studs). Bigger = lower, 0 = old position
+local TRAIL_BACK = 0.7       -- how far to move the trail BACKWARDS (studs, away from where you aim). Bigger = further back, 0 = no change
 
 -- EDITABLE IMAGE SPEED SETTINGS (only used by the built-in backup textures, see SKIN_TEXTURES below)
 local MAX_TEX = 512              -- sharper; built once in the background so it doesn't hurt switching (384 = lighter)
@@ -247,6 +252,19 @@ local SKIN_TEXTURES = {
 	purple  = "136303338873406",
 	pink    = "75102863575405",
 	cyan    = "128247760025980",
+	-- GINGERSCOPE pictures (same order as the buttons)
+	g_red     = "122733307005975",
+	g_orange  = "114586221602723",
+	g_yellow  = "82496731172261",
+	g_green   = "92529757701488",
+	g_blue    = "74337224584912",
+	g_purple  = "130366942184716",
+	g_pink    = "135518932434375",
+	g_white   = "134540586255956",
+	g_cyan    = "126602905147385",
+	g_kitty   = "125845357783770",
+	g_galaxy  = "95683001719931",
+	g_rainbow = "116414513951598",
 }
 
 -- button shine for the special scopes (gold bands / icy diamond facets / ruby / beast)
@@ -336,6 +354,57 @@ local SHEEN_PINK = Color3.fromRGB(255, 120, 190)
 local SHEEN_TEAL = Color3.fromRGB(90, 255, 230)
 local GLASS_SHEEN = false
 local GLASS = { name = "Glass", color = Color3.fromRGB(255, 255, 255), mode = "pearl", forceGlass = true, sheen = GLASS_SHEEN }
+
+-- GINGERSCOPE: its own list of skins (ginger = true). A ginger skin only paints the gingerscope gun, a normal scope skin only paints
+-- the other gun(s), so the two tabs never mix up their textures. If no tool with "ginger" in its name is ever seen, ginger skins
+-- apply to whatever gun the script found (in case the gingerscope is just a different look of the same tool).
+local GINGER = { seen = false }
+GINGER.colors = {
+	{ name = "Red Gingerscope",     color = Color3.fromRGB(255, 0, 0),     skin = "g_red",     ginger = true, noSuffix = true },
+	{ name = "Orange Gingerscope",  color = Color3.fromRGB(255, 128, 0),   skin = "g_orange",  ginger = true, noSuffix = true },
+	{ name = "Yellow Gingerscope",  color = Color3.fromRGB(255, 255, 0),   skin = "g_yellow",  ginger = true, noSuffix = true },
+	{ name = "Green Gingerscope",   color = Color3.fromRGB(0, 255, 0),     skin = "g_green",   ginger = true, noSuffix = true },
+	{ name = "Blue Gingerscope",    color = Color3.fromRGB(0, 100, 255),   skin = "g_blue",    ginger = true, noSuffix = true },
+	{ name = "Purple Gingerscope",  color = Color3.fromRGB(160, 32, 240),  skin = "g_purple",  ginger = true, noSuffix = true },
+	{ name = "Pink Gingerscope",    color = Color3.fromRGB(255, 190, 215), skin = "g_pink",    ginger = true, noSuffix = true },
+	{ name = "White Gingerscope",   color = Color3.fromRGB(238, 238, 244), skin = "g_white",   ginger = true, noSuffix = true },
+	{ name = "Cyan Gingerscope",    color = Color3.fromRGB(0, 255, 255),   skin = "g_cyan",    ginger = true, noSuffix = true },
+	{ name = "Kitty Gingerscope",   color = Color3.fromRGB(255, 150, 200), skin = "g_kitty",   ginger = true, noSuffix = true,
+		btnGradient = KITTY_SEQ, effectSeq = KITTY_SEQ },
+	{ name = "Galaxy Gingerscope",  color = Color3.fromRGB(100, 60, 220),  skin = "g_galaxy",  ginger = true, noSuffix = true,
+		btnGradient = GALAXY_SEQ, effectSeq = GALAXY_SEQ },
+	{ name = "Rainbow Gingerscope", color = Color3.fromRGB(255, 60, 200),  skin = "g_rainbow", ginger = true, noSuffix = true,
+		mode = "texture", texStyle = "rainbow", gradient = true, rainbowFx = true },
+}
+GINGER.chroma = { name = "Chroma Gingerscope", color = RAINBOW.color, mode = "rainbow", ginger = true }
+GINGER.glass = { name = "Glass Gingerscope", color = GLASS.color, mode = "pearl", forceGlass = true, sheen = GLASS_SHEEN, ginger = true }
+
+function GINGER.isName(name)
+	return string.find(string.lower(name or ""), "ginger", 1, true) ~= nil
+end
+-- does this look (entry) belong on a gun with this name?
+function GINGER.fitsName(entry, name)
+	if not entry then return false end
+	local g = GINGER.isName(name)
+	if entry.ginger then return g or not GINGER.seen end
+	return not g
+end
+function GINGER.fitsInst(entry, inst)
+	if not entry then return false end
+	local tool = inst:FindFirstAncestorOfClass("Tool")
+	if tool then return GINGER.fitsName(entry, tool.Name) end
+	return true
+end
+function GINGER.fitsTarget(entry, target)
+	local tool = target:IsA("Tool") and target or target:FindFirstAncestorOfClass("Tool")
+	return GINGER.fitsName(entry, (tool or target).Name)
+end
+-- does the skin picture `key` belong on this tool? (so each gun only prepares its own pictures)
+function GINGER.keyFitsTool(key, tool)
+	local toolG = GINGER.isName(tool.Name)
+	if string.sub(key, 1, 2) == "g_" then return toolG or not GINGER.seen end
+	return not toolG
+end
 
 -- MINIMISED ICON
 -- To use your orb picture as the minimised icon:
@@ -953,7 +1022,20 @@ local function resolveSkin(key)
 		if raw == "" then
 			result = false
 		elseif string.find(raw, "^%d+$") then
-			result = decalToImage(raw) or ("rbxassetid://" .. raw)
+			-- the game can fail to hand over the decal on the very first try (that is why the first run used to come
+			-- out flat / not load), so ask again a few times before giving up
+			result = decalToImage(raw)
+			local tries = 1
+			while not result and tries < 8 do
+				task.wait(0.4)
+				result = decalToImage(raw)
+				tries += 1
+			end
+			if not result then
+				result = "rbxassetid://" .. raw
+				skinCache[key] = nil
+				return result -- not remembered, so the next ask tries again
+			end
 		elseif string.find(raw, "^rbxassetid://") or string.find(raw, "^rbxasset://") then
 			result = raw
 		elseif string.find(raw, "^https?://") then
@@ -985,7 +1067,14 @@ local function resolveSkin(key)
 end
 
 local function skinOf(entry)
-	if entry and entry.skin then return resolveSkin(entry.skin) end
+	if entry and entry.skin then
+		-- never blocks a click: a picture that is still downloading in the background just counts as "has a skin"
+		local cached = skinCache[entry.skin]
+		if cached ~= nil then return cached or nil end
+		local raw = SKIN_TEXTURES[entry.skin]
+		if type(raw) == "string" and string.find(raw, "%S") then return raw end
+		return resolveSkin(entry.skin)
+	end
 	return nil
 end
 
@@ -1018,7 +1107,7 @@ local lastSpin = 0
 local hipQueued = false
 
 local gui, gunLabel, hipLabel, statusLabel, noteLabel
-local glassToggleBtn, glassToggleBg, trailToggleBtn, trailToggleBg
+local toggleUI = {} -- one entry per tab page: { glassBg, glassTb, trailBg, trailTb }
 local buttons = {}
 
 local function connect(signal, fn)
@@ -1870,7 +1959,7 @@ function SkinKit.prebuild(tool, onlyKey)
 			local ok, tex = pcall(function() return d.TextureID end)
 			if ok and type(tex) == "string" and tex ~= "" then
 				for key in pairs(SKIN_TEXTURES) do
-					if (not onlyKey or key == onlyKey) and SkinKit.img[key] ~= nil then pcall(SkinKit.make, d, key) end
+					if (not onlyKey or key == onlyKey) and SkinKit.img[key] ~= nil and GINGER.keyFitsTool(key, tool) then pcall(SkinKit.make, d, key) end
 				end
 			end
 		end
@@ -1884,10 +1973,14 @@ SkinKit.warming = 0
 function SkinKit.warm(tool)
 	SkinKit.warming += 1
 	local ok, err = pcall(function()
+		local keys = {}
+		for key in pairs(SKIN_TEXTURES) do
+			if GINGER.keyFitsTool(key, tool) then table.insert(keys, key) end
+		end
 		local waited = 0
 		while waited < 30 do
 			local pending = false
-			for key in pairs(SKIN_TEXTURES) do
+			for _, key in ipairs(keys) do
 				if SkinKit.img[key] == nil then pending = true end
 			end
 			if not pending then break end
@@ -1923,7 +2016,7 @@ function SkinKit.warm(tool)
 			end
 		end
 		if #dummies == 0 then return end
-		for key in pairs(SKIN_TEXTURES) do
+		for _, key in ipairs(keys) do
 			if SkinKit.img[key] then
 				local sas = {}
 				for i, dm in ipairs(dummies) do
@@ -2131,7 +2224,7 @@ local function watchTexture(mp)
 	if texWatched[mp] then return end
 	texWatched[mp] = true
 	connect(mp:GetPropertyChangedSignal("TextureID"), function()
-		if selected then tintMesh(mp, colorFor(mp)) end
+		if selected and GINGER.fitsInst(selected, mp) then tintMesh(mp, colorFor(mp)) end
 	end)
 end
 
@@ -2416,11 +2509,23 @@ local function buildTrail(tool, allParts, gripPos)
 	local drop = upLocal.Magnitude > 0.01 and (upLocal.Unit * -TRAIL_DROP) or Vector3.zero
 	local a0 = Instance.new("Attachment")
 	a0.Name = "VSTrail"
-	a0.Position = tip + side + drop
+	-- moves the whole trail BACKWARDS (away from the way you are aiming), same height
+	local backLocal = Vector3.zero
+	if TRAIL_BACK ~= 0 then
+		local char = LocalPlayer.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local cam = Workspace.CurrentCamera
+		local look = (root and root.CFrame.LookVector) or (cam and cam.CFrame.LookVector)
+		if look then
+			local v = ref.CFrame:VectorToObjectSpace(-look)
+			if v.Magnitude > 0.01 then backLocal = v.Unit * TRAIL_BACK end
+		end
+	end
+	a0.Position = tip + side + drop + backLocal
 	a0.Parent = ref
 	local a1 = Instance.new("Attachment")
 	a1.Name = "VSTrail"
-	a1.Position = tip - side + drop
+	a1.Position = tip - side + drop + backLocal
 	a1.Parent = ref
 	local trail = Instance.new("Trail")
 	trail.Name = "VSTrail"
@@ -2588,6 +2693,7 @@ local function guardEffect(inst)
 	guarded[inst] = true
 	connect(inst:GetPropertyChangedSignal("Color"), function()
 		if not selected then return end
+		if not GINGER.fitsInst(selected, inst) then return end
 		local fine
 		if selected.mode == "rainbow" or selected.rainbowFx then
 			fine = #inst.Color.Keypoints == #RAINBOW_SEQUENCE.Keypoints
@@ -2603,7 +2709,7 @@ local function guardEffect(inst)
 end
 
 local function paintGun(tool)
-	if not selected then return 0 end
+	if not selected or not GINGER.fitsName(selected, tool.Name) then return 0 end
 	local ref = mapRainbow(partsUnder(tool))
 	local effects = 0
 	for _, d in ipairs(tool:GetDescendants()) do
@@ -2619,6 +2725,7 @@ end
 local function gunAssetIds()
 	local ids = {}
 	for tool in pairs(hooked) do
+		if not GINGER.fitsName(selected, tool.Name) then continue end
 		for _, d in ipairs(tool:GetDescendants()) do
 			if d:IsA("MeshPart") then
 				local okt, tex = pcall(function() return d.TextureID end)
@@ -2646,7 +2753,7 @@ local function watchTarget(target)
 	watchedTargets[target] = true
 	connect(target.DescendantAdded, function(d)
 		task.defer(function()
-			if selected and d.Parent then
+			if selected and d.Parent and GINGER.fitsTarget(selected, target) then
 				paint(d, colorFor(d), false)
 			end
 		end)
@@ -2665,6 +2772,7 @@ local function paintHip()
 		end
 	end
 	local target = hipTarget(char)
+	if target and not GINGER.fitsTarget(selected, target) then target = nil end
 	if target then
 		watchTarget(target)
 		local targetRef = mapRainbow(partsUnder(target))
@@ -2698,6 +2806,7 @@ local function hipGroups()
 	local char = LocalPlayer.Character
 	if not char then return groups end
 	local target = hipTarget(char)
+	if target and not GINGER.fitsTarget(selected, target) then target = nil end
 	if target then groups["HIPTARGET"] = partsUnder(target) end
 	local ids = gunAssetIds()
 	local matched = {}
@@ -2750,7 +2859,7 @@ local function refreshTrails()
 		return
 	end
 	for tool in pairs(hooked) do
-		if tool.Parent and tool.Parent == LocalPlayer.Character then
+		if tool.Parent and tool.Parent == LocalPlayer.Character and GINGER.fitsName(selected, tool.Name) then
 			ensureTrail(tool, function() return partsUnder(tool) end, handPosition)
 		else
 			removeTrail(tool)
@@ -2816,7 +2925,7 @@ end
 
 -- GUN DETECTION: a Tool counts as the gun if its name is "gun" or contains any word below.
 -- If the menu says "Gun not found", add the exact name of your gun tool here (it lists the tools it can see).
-local GUN_NAMES = { "gun", "voidscope" }
+local GUN_NAMES = { "gun", "voidscope", "ginger" }
 local function isGun(inst)
 	if not inst:IsA("Tool") then return false end
 	local n = string.lower(inst.Name)
@@ -2864,6 +2973,7 @@ end
 local function hookGun(tool)
 	if hooked[tool] then return end
 	hooked[tool] = true
+	if GINGER.isName(tool.Name) then GINGER.seen = true end
 	print("[Voidscope Recolor] found gun: " .. tool:GetFullName())
 	task.delay(PREBUILD_DELAY, prebuildTextures, tool) -- builds the backup looks quietly in the background
 	task.spawn(SkinKit.prebuild, tool)
@@ -2882,7 +2992,7 @@ local function hookGun(tool)
 		guardEffect(d)
 		watchSound(d)
 		task.defer(function()
-			if selected and d.Parent then
+			if selected and d.Parent and GINGER.fitsName(selected, tool.Name) then
 				paint(d, colorFor(d), false)
 			end
 		end)
@@ -2918,6 +3028,14 @@ local function scan(container)
 	end)
 end
 
+-- look for a gingerscope first, so the right skins are prepared for each gun from the very start
+for _, c in ipairs({ LocalPlayer.Character, LocalPlayer:FindFirstChildOfClass("Backpack") }) do
+	if c then
+		for _, child in ipairs(c:GetChildren()) do
+			if isGun(child) and GINGER.isName(child.Name) then GINGER.seen = true end
+		end
+	end
+end
 scan(LocalPlayer.Character)
 scan(LocalPlayer:FindFirstChildOfClass("Backpack"))
 connect(LocalPlayer.CharacterAdded, scan)
@@ -3007,6 +3125,17 @@ end
 connect(Workspace.DescendantAdded, function(d)
 	if not selected then return end
 	if os.clock() > shotUntil then return end
+	do -- only recolour the shot if the gun in your hand is the kind that the selected look belongs to
+		local mine = LocalPlayer.Character
+		if mine then
+			for _, child in ipairs(mine:GetChildren()) do
+				if child:IsA("Tool") and hooked[child] then
+					if not GINGER.fitsName(selected, child.Name) then return end
+					break
+				end
+			end
+		end
+	end
 	local char = characterOf(d)
 	if char then
 		if char ~= LocalPlayer.Character then return end
@@ -3055,17 +3184,15 @@ local function setOutline(bg, on)
 end
 
 local function updateStatus()
-	if glassToggleBtn then
-		glassToggleBtn.Text = glassOverlay and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF"
-	end
-	if glassToggleBg then
-		glassToggleBg.BackgroundColor3 = glassOverlay and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
-	end
-	if trailToggleBtn then
-		trailToggleBtn.Text = trailOn and "TRAIL: ON" or "TRAIL: OFF"
-	end
-	if trailToggleBg then
-		trailToggleBg.BackgroundColor3 = trailOn and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+	for _, t in ipairs(toggleUI) do
+		if t.glassTb then t.glassTb.Text = glassOverlay and "SEE-THROUGH: ON" or "SEE-THROUGH: OFF" end
+		if t.glassBg then
+			t.glassBg.BackgroundColor3 = glassOverlay and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+		end
+		if t.trailTb then t.trailTb.Text = trailOn and "TRAIL: ON" or "TRAIL: OFF" end
+		if t.trailBg then
+			t.trailBg.BackgroundColor3 = trailOn and Color3.fromRGB(0, 105, 190) or Color3.fromRGB(78, 80, 92)
+		end
 	end
 	if statusLabel then
 		statusLabel.Text = selected and ("Selected: " .. selected.name) or "Selected: Default"
@@ -3075,9 +3202,10 @@ local function updateStatus()
 	end
 end
 
-local function applyColor(entry)
+local function applyColorFull(entry, kindChanged)
 	selected = entry
-	if not glassWanted() then unglassAll() end
+	-- switching between the two tabs leaves the other gun's look alone, so only clear glass when staying on the same gun
+	if not glassWanted() and not kindChanged then unglassAll() end
 	for part in pairs(sheens) do removeSheen(part) end
 	local found, effects = 0, 0
 	for tool in pairs(hooked) do
@@ -3097,7 +3225,38 @@ local function applyColor(entry)
 	updateStatus()
 end
 
+-- INSTANT SWITCH: the skin picture is swapped onto every gun part the moment you click (just re-parenting the ready-made
+-- appearances, nothing else). All the heavier work (beam colours, glass, trail, hip gun) runs one frame later, so
+-- the new look is on screen before any of it starts.
+local applyGen = 0
+local function applyColor(entry)
+	applyGen += 1
+	local gen = applyGen
+	local kindChanged = ((selected and selected.ginger) or false) ~= ((entry and entry.ginger) or false)
+	selected = entry
+	if entry and entry.skin and SkinKit.img[entry.skin] then
+		local name = "skin_" .. entry.skin
+		for mp, cache in pairs(saCache) do
+			local sa = cache[name]
+			if sa and mp.Parent and GINGER.fitsInst(entry, mp) then
+				sa.Parent = mp
+				for _, o in pairs(cache) do
+					if o ~= sa and o.Parent then o.Parent = nil end
+				end
+				surfaces[mp] = sa
+				applied[mp] = imgOf[sa]
+			end
+		end
+	end
+	updateStatus()
+	task.spawn(function()
+		task.wait()
+		if gen == applyGen then applyColorFull(entry, kindChanged) end
+	end)
+end
+
 local function resetColor()
+	applyGen += 1
 	selected = nil
 	glassOverlay = false
 	trailOn = false
@@ -3185,7 +3344,7 @@ local function buildGui()
 	end
 
 	local WIDTH = 290   -- width of the page area
-	local TABW = 0      -- no side tab column
+	local TABW = 100    -- width of the left tab column (SCOPES / GINGERSCOPE)
 
 	local function photoText(b, size)
 		b.Font = BUBBLY_FONT
@@ -3342,7 +3501,7 @@ local function buildGui()
 	sidebar.BorderSizePixel = 0
 	sidebar.ZIndex = 2
 	sidebar.Parent = frame
-	sidebar.Visible = false
+	sidebar.Visible = true
 	Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, 12)
 	local sideStroke = Instance.new("UIStroke")
 	sideStroke.Color = BUTTON_OUTLINE
@@ -3772,7 +3931,9 @@ local function buildGui()
 	local scopesPage, scopesNext = newPage("scopes")
 
 	local row1 = featureRow(scopesPage, scopesNext)
-	glassToggleBg, glassToggleBtn = (function()
+	local ui1 = {}
+	toggleUI[#toggleUI + 1] = ui1
+	ui1.glassBg, ui1.glassTb = (function()
 		local bg, tb, holder = makeGlassButton(row1, 1, "SEE-THROUGH: OFF", Color3.fromRGB(78, 80, 92), nil, function()
 			glassOverlay = not glassOverlay
 			if selected then
@@ -3784,7 +3945,7 @@ local function buildGui()
 		holder.Size = UDim2.new(0.5, -3, 1, 0)
 		return bg, tb
 	end)()
-	trailToggleBg, trailToggleBtn = (function()
+	ui1.trailBg, ui1.trailTb = (function()
 		local bg, tb, holder = makeGlassButton(row1, 2, "TRAIL: OFF", Color3.fromRGB(78, 80, 92), nil, function()
 			trailOn = not trailOn
 			if trailOn and not selected then
@@ -3823,6 +3984,66 @@ local function buildGui()
 	buildPicker(scopesPage, scopesNext, function(c)
 		applyColor({ name = "Custom", color = c })
 	end)
+
+	-- PAGE 2: GINGERSCOPE (same layout as the scopes page, but every skin here is a gingerscope picture)
+	do
+		local gingerPage, gingerNext = newPage("gingerscope")
+
+		local grow1 = featureRow(gingerPage, gingerNext)
+		local ui2 = {}
+		toggleUI[#toggleUI + 1] = ui2
+		ui2.glassBg, ui2.glassTb = (function()
+			local bg, tb, holder = makeGlassButton(grow1, 1, "SEE-THROUGH: OFF", Color3.fromRGB(78, 80, 92), nil, function()
+				glassOverlay = not glassOverlay
+				if selected then
+					applyColor(selected)
+				else
+					updateStatus()
+				end
+			end)
+			holder.Size = UDim2.new(0.5, -3, 1, 0)
+			return bg, tb
+		end)()
+		ui2.trailBg, ui2.trailTb = (function()
+			local bg, tb, holder = makeGlassButton(grow1, 2, "TRAIL: OFF", Color3.fromRGB(78, 80, 92), nil, function()
+				trailOn = not trailOn
+				if trailOn and not selected then
+					setNote("Pick a scope first, the trail follows it.")
+				elseif trailOn then
+					setNote("")
+				end
+				refreshTrails()
+				updateStatus()
+			end)
+			holder.Size = UDim2.new(0.5, -3, 1, 0)
+			return bg, tb
+		end)()
+
+		local grow2 = featureRow(gingerPage, gingerNext)
+		do
+			local bg, _, holder = makeGlassButton(grow2, 1, "GLASS", Color3.fromRGB(100, 140, 170), nil,
+				function() applyColor(GINGER.glass) end, 0.15)
+			holder.Size = UDim2.new(0.5, -3, 1, 0)
+			buttons[GINGER.glass.name] = bg
+			local bg2, _, holder2 = makeGlassButton(grow2, 2, "CHROMA", Color3.new(1, 1, 1), RAINBOW_SEQUENCE,
+				function() applyColor(GINGER.chroma) end)
+			holder2.Size = UDim2.new(0.5, -3, 1, 0)
+			buttons[GINGER.chroma.name] = bg2
+		end
+
+		local grow3 = featureRow(gingerPage, gingerNext)
+		do
+			local _, _, holder = makeGlassButton(grow3, 1, "RESET TO DEFAULT", Color3.fromRGB(84, 84, 100), nil, resetColor)
+			holder.Size = UDim2.new(1, 0, 1, 0)
+		end
+
+		sectionLabel(gingerPage, gingerNext, "GINGERSCOPE")
+		colorScroll(gingerPage, gingerNext, "", applyColor, buttons, GINGER.colors)
+
+		buildPicker(gingerPage, gingerNext, function(c)
+			applyColor({ name = "Custom Gingerscope", color = c, ginger = true })
+		end)
+	end
 
 	-- shared status lines + note + footer + credit (below the page)
 	gunLabel = label(content, nextOrder(), "Gun: looking...", 11, Color3.fromRGB(190, 192, 208), 30)
@@ -3896,6 +4117,7 @@ local function buildGui()
 	end
 	local tabDefs = {
 		{ "scopes", "SCOPES" },
+		{ "gingerscope", "GINGERSCOPE" },
 	}
 	for i, def in ipairs(tabDefs) do
 		local key = def[1]
@@ -4080,6 +4302,7 @@ end
 -- every gun part, so clicking a skin only swaps it in. A click made before a download finishes keeps the current
 -- look (no flat colour) and swaps the moment that picture is ready.
 task.spawn(function()
+	task.delay(6, function() env.VestaLoadDone = true end) -- failsafe: the loading screen can never get stuck
 	SkinKit.onReady = function(key)
 		for tool in pairs(hooked) do
 			if tool.Parent then SkinKit.prebuild(tool, key) end
