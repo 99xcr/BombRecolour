@@ -209,8 +209,8 @@ local TRAIL_END = "back"     -- "back" = comes off the very back of the gun, "fr
 local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun, set this to true
 local TRAIL_DROP = 1.4       -- how far to move the trail DOWN from where it is now (studs). Bigger = lower, 0 = old position
 local TRAIL_BACK = 0.7       -- how far to move the trail BACKWARDS (studs, away from where you aim). Bigger = further back, 0 = no change
-local TRAIL_DROP_GINGER = 0.5  -- same as TRAIL_DROP but only for the gingerscope (smaller = higher up)
-local TRAIL_BACK_GINGER = 0.17 -- same as TRAIL_BACK but only for the gingerscope (smaller = closer to the gun)
+local TRAIL_DROP_GINGER = 0.12 -- same as TRAIL_DROP but only for the gingerscope (smaller = higher up)
+local TRAIL_BACK_GINGER = 0.19 -- same as TRAIL_BACK but only for the gingerscope (smaller = closer to the gun)
 
 -- EDITABLE IMAGE SPEED SETTINGS (only used by the built-in backup textures, see SKIN_TEXTURES below)
 local MAX_TEX = 512              -- sharper; built once in the background so it doesn't hurt switching (384 = lighter)
@@ -1146,7 +1146,7 @@ local sheens = setmetatable({}, { __mode = "k" })        -- gun part -> the two 
 local lastSpin = 0
 local hipQueued = false
 
-local gui, gunLabel, hipLabel, statusLabel, noteLabel
+local gui, statusLabel, noteLabel
 local toggleUI = {} -- one entry per tab page: { glassBg, glassTb, trailBg, trailTb }
 local buttons = {}
 
@@ -1158,12 +1158,6 @@ end
 
 local function setNote(text)
 	if noteLabel then noteLabel.Text = text or "" end
-end
-local function setGunStatus(text)
-	if gunLabel then gunLabel.Text = text end
-end
-local function setHipStatus(text)
-	if hipLabel then hipLabel.Text = text end
 end
 
 local function set(inst, prop, value)
@@ -2965,12 +2959,7 @@ end)
 
 local function refreshHip()
 	if not selected then return end
-	local n = paintHip()
-	if n > 0 then
-		setHipStatus("Hip gun: recoloured (" .. n .. " part(s))")
-	else
-		setHipStatus("Hip gun: not seen yet (put the gun away)")
-	end
+	paintHip()
 end
 
 local function queueHipRefresh()
@@ -3003,7 +2992,7 @@ local function watchCharacter(char)
 end
 
 -- GUN DETECTION: a Tool counts as the gun if its name is "gun" or contains any word below.
--- If the menu says "Gun not found", add the exact name of your gun tool here (it lists the tools it can see).
+-- Add the exact name of your gun tool here if the script does not find it.
 local GUN_NAMES = { "gun", "voidscope", "ginger" }
 local function isGun(inst)
 	if not inst:IsA("Tool") then return false end
@@ -3057,13 +3046,8 @@ local function hookGun(tool)
 	task.delay(PREBUILD_DELAY, prebuildTextures, tool) -- builds the backup looks quietly in the background
 	task.spawn(SkinKit.prebuild, tool)
 	task.spawn(SkinKit.warm, tool)                 -- makes every downloaded skin ready on every gun part right now (instant switching)
-	local effects = paintGun(tool)
-	if selected then
-		setGunStatus("Gun: found, " .. effects .. " beam part(s)")
-		refreshHip()
-	else
-		setGunStatus("Gun: found (" .. tool.Name .. ")")
-	end
+	paintGun(tool)
+	if selected then refreshHip() end
 	for _, d in ipairs(tool:GetDescendants()) do
 		watchSound(d)
 	end
@@ -3302,12 +3286,7 @@ local function applyColorFull(entry, kindChanged)
 			effects += paintGun(tool)
 		end
 	end
-	if found == 0 then
-		setGunStatus("Gun not found. Tools seen: " .. toolNames() .. " (add the right name to GUN_NAMES)")
-	else
-		setGunStatus("Gun: found, " .. effects .. " beam part(s)")
-		if not (selected and selected.mode == "texture") then setNote("") end
-	end
+	if found > 0 and not (selected and selected.mode == "texture") then setNote("") end
 	refreshHip()
 	refreshTrails()
 	updateStatus()
@@ -3350,7 +3329,6 @@ local function resetColor()
 	trailOn = false
 	restoreAll()
 	setNote("")
-	setHipStatus("Hip gun: pick a colour first")
 	updateStatus()
 end
 
@@ -4254,17 +4232,6 @@ local function buildGui()
 	end
 
 	-- shared status lines + note + footer + credit (below the page)
-	gunLabel = label(content, nextOrder(), "Gun: looking...", 11, Color3.fromRGB(190, 192, 208), 30)
-	gunLabel.TextXAlignment = Enum.TextXAlignment.Left
-	gunLabel.TextYAlignment = Enum.TextYAlignment.Top
-	gunLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-	gunLabel.TextStrokeTransparency = 0.5
-
-	hipLabel = label(content, nextOrder(), "Hip gun: pick a colour first", 11, Color3.fromRGB(190, 192, 208), 14)
-	hipLabel.TextXAlignment = Enum.TextXAlignment.Left
-	hipLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-	hipLabel.TextStrokeTransparency = 0.5
-
 	noteLabel = label(content, nextOrder(), "", 11, Color3.fromRGB(150, 150, 170), 30)
 	noteLabel.TextXAlignment = Enum.TextXAlignment.Left
 	noteLabel.TextYAlignment = Enum.TextYAlignment.Top
@@ -4495,17 +4462,6 @@ end
 local built, buildErr = pcall(buildGui)
 if not built then
 	warn("[Voidscope Recolor] the menu failed to build: " .. tostring(buildErr))
-end
-
-if next(hooked) then
-	setGunStatus("Gun: found")
-else
-	setGunStatus("Gun: not found yet (equip it)")
-	task.delay(2, function()
-		if not next(hooked) then
-			setGunStatus("Gun not found. Tools seen: " .. toolNames() .. " (add the right name to GUN_NAMES)")
-		end
-	end)
 end
 
 -- INSTANT SWITCHING: at start, every skin picture is downloaded into memory at the same time and made ready on
