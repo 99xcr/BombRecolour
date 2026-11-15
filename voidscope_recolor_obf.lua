@@ -3300,6 +3300,10 @@ local function updateStatus()
 		end
 		if t.reloadTb then t.reloadTb.Text = noReloadOn and "NO RELOAD ANIM: ON" or "NO RELOAD ANIM: OFF" end
 		if t.reloadBg then t.reloadBg.BackgroundColor3 = noReloadOn and UI.on or UI.off end
+		if t.runTb and GearKit then
+			t.runTb.Text = GearKit.runScripts and "RUN GEAR SCRIPTS: ON" or "RUN GEAR SCRIPTS: OFF"
+			t.runBg.BackgroundColor3 = GearKit.runScripts and UI.on or UI.off
+		end
 		if t.trailTb then t.trailTb.Text = trailOn and "TRAIL: ON" or "TRAIL: OFF" end
 		if t.trailBg then
 			t.trailBg.BackgroundColor3 = trailOn and UI.on or UI.off
@@ -3921,7 +3925,28 @@ do
 		GearKit.saveFavs()
 	end
 
-	-- puts the gear in your backpack. done(true/false) is called when finished.
+	-- Gears keep their main code in a server Script, which never runs on your side. This reads that code with your
+	-- executor (decompile) and runs it locally, as if it were a LocalScript, so the gear behaves on your screen.
+	GearKit.runScripts = true
+	GearKit.canRun = (type(decompile) == "function") and (type(loadstring) == "function") and (type(setfenv) == "function")
+	local baseEnv = getfenv(1)
+	local function runLocally(tool)
+		if not GearKit.canRun then return end
+		for _, sc in ipairs(tool:GetDescendants()) do
+			if sc.ClassName == "Script" then
+				task.spawn(function()
+					local ok, src = pcall(decompile, sc)
+					if not ok or type(src) ~= "string" or #src < 5 then return end
+					local f = loadstring(src)
+					if type(f) ~= "function" then return end
+					pcall(setfenv, f, setmetatable({ script = sc }, { __index = baseEnv }))
+					local ran, err = pcall(f)
+				end)
+			end
+		end
+	end
+
+	-- puts the gear in your backpack. done(true/false, scriptsNotRun) is called when finished.
 	function GearKit.give(id, done, again)
 		id = tonumber(id)
 		if not id then
@@ -3950,7 +3975,8 @@ do
 						if o ~= tool then pcall(function() o:Destroy() end) end
 					end
 				end
-				if done then done(true) end
+				if GearKit.runScripts then runLocally(tool) end
+				if done then done(true, GearKit.runScripts and not GearKit.canRun) end
 			else
 				if done then done(false) end
 			end
@@ -5047,8 +5073,8 @@ local function buildGui()
 
 		local function giveWithFeedback(e, tb)
 			gflash(tb, "GETTING...")
-			GearKit.give(e.id, function(ok)
-				gflash(tb, ok and "GOT IT!" or "FAILED", 1.2)
+			GearKit.give(e.id, function(ok, noRun)
+				gflash(tb, ok and (noRun and "GOT IT (NO SCRIPTS)" or "GOT IT!") or "FAILED", 1.2)
 			end)
 		end
 
@@ -5178,6 +5204,15 @@ local function buildGui()
 			end
 		end
 		setSource("popular")
+
+		local runRow = featureRow(gearPage, gearNext)
+		local ui4 = {}
+		toggleUI[#toggleUI + 1] = ui4
+		ui4.runBg, ui4.runTb = gcols(runRow, 1, 1, "RUN GEAR SCRIPTS: ON", Color3.fromRGB(78, 80, 92), function()
+			GearKit.runScripts = not GearKit.runScripts
+			updateStatus()
+		end)
+		updateStatus()
 
 		local rmRow = featureRow(gearPage, gearNext)
 		gcols(rmRow, 1, 1, "REMOVE ALL ADDED GEARS", Color3.fromRGB(125, 30, 30), function() GearKit.removeAll() end)
