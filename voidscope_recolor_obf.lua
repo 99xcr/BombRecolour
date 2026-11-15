@@ -1,7 +1,3 @@
--- wait for the game to be fully loaded first, so the script works the FIRST time you run it
-if not game:IsLoaded() then game.Loaded:Wait() end
-repeat task.wait() until game:GetService("Players").LocalPlayer
-
 -- VESTA LOADING SCREEN (black screen, bubbly title, small "loading" at the bottom)
 do
 	local Players = game:GetService("Players")
@@ -12,8 +8,8 @@ do
 
 	local FONT = Enum.Font.FredokaOne -- bubbly font
 	local TITLE = "VESTA RECOLOR"
-	local MIN_TIME = 2.5   -- shortest time the screen shows (seconds)
-	local MAX_TIME = 7     -- gives up waiting after this long and fades anyway
+	local MIN_TIME = 1.8   -- shortest time the screen shows (seconds)
+	local MAX_TIME = 5     -- gives up waiting after this long and fades anyway
 
 	local old = genv.VestaLoaderGui
 	if old then pcall(function() old:Destroy() end) end
@@ -236,6 +232,10 @@ do
 	end)
 end
 
+-- the loading screen is already on screen by now; only now wait for the game (so it never delays the screen)
+if not game:IsLoaded() then game.Loaded:Wait() end
+repeat task.wait() until game:GetService("Players").LocalPlayer
+
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
@@ -254,8 +254,8 @@ local BUTTON_OUTLINE = Color3.fromRGB(120, 125, 142)  -- glass rim around every 
 local BUTTON_SELECTED = Color3.fromRGB(0, 150, 235)
 
 -- TRAIL SETTINGS
-local TRAIL_LIFETIME = 0.6   -- how long the trail lingers (seconds)
-local TRAIL_WIDTH = 0.12     -- how thick the trail is (studs), smaller = thinner
+local TRAIL_LIFETIME = 0.35  -- how long the trail lingers (seconds)
+local TRAIL_WIDTH = 0.16     -- how thick the trail is (studs), smaller = thinner
 local TRAIL_END = "back"     -- "back" = comes off the very back of the gun, "front" = off the tip
 local TRAIL_FLIP = false     -- if the trail comes off the wrong end of the gun, set this to true
 local TRAIL_DROP = 1.4       -- how far to move the trail DOWN from where it is now (studs). Bigger = lower, 0 = old position
@@ -504,7 +504,7 @@ end
 -- OR paste a base64 string of the PNG into ICON_PNG_B64 (executors with writefile + getcustomasset only).
 -- The built-in picture is the chrome VESTA logo. If it can't be loaded, a plain 'vesta' text button is used.
 local MINI_ICON_ASSET = ""
-local ICON_SIZE = 72          -- width of the minimised logo
+local ICON_SIZE = 140         -- width of the minimised logo
 local ICON_ASPECT = 0.326      -- height / width of the logo picture
 local ICON_URL = ""
 local ICON_PNG_B64 = [=[
@@ -3288,6 +3288,7 @@ local function setOutline(bg, on)
 	end
 end
 
+local noReloadOn, BtnEdit, nrConns, noReloadSound -- filled in by the blocks further down
 local function updateStatus()
 	for _, bar in pairs(UI.tabBars) do
 		if bar.Parent then bar.BackgroundColor3 = UI.accent end
@@ -3297,6 +3298,8 @@ local function updateStatus()
 		if t.glassBg then
 			t.glassBg.BackgroundColor3 = glassOverlay and UI.on or UI.off
 		end
+		if t.reloadTb then t.reloadTb.Text = noReloadOn and "NO RELOAD ANIM: ON" or "NO RELOAD ANIM: OFF" end
+		if t.reloadBg then t.reloadBg.BackgroundColor3 = noReloadOn and UI.on or UI.off end
 		if t.trailTb then t.trailTb.Text = trailOn and "TRAIL: ON" or "TRAIL: OFF" end
 		if t.trailBg then
 			t.trailBg.BackgroundColor3 = trailOn and UI.on or UI.off
@@ -3430,10 +3433,424 @@ local function loadIconImage()
 	return nil
 end
 
+do -- (wrapped so these extra helpers do not use up top-level variable slots)
+-- NO GUN RELOAD ANIMATION: stops the reload (action) animations while you hold the gun and for a few seconds after
+-- putting it away, and plays a sound when it is equipped / put away.
+noReloadOn = true
+local NR_SOUND_ID = "rbxassetid://6968135315"
+local NR_TOOL_NAME = "Gun"
+local NR_COOLDOWN = 5
+nrConns = {}
+noReloadSound = Instance.new("Sound")
+noReloadSound.Name = "VestaNoReloadSound"
+noReloadSound.SoundId = NR_SOUND_ID
+noReloadSound.Volume = 1
+pcall(function() noReloadSound.Parent = game:GetService("SoundService") end)
+
+local function setupNoReload(character)
+	task.spawn(function()
+		local humanoid = character:WaitForChild("Humanoid", 10)
+		local animator = humanoid and humanoid:WaitForChild("Animator", 10)
+		local lastUnequipped = 0
+		if animator then
+			table.insert(nrConns, animator.AnimationPlayed:Connect(function(track)
+				if not noReloadOn then return end
+				local tool = character:FindFirstChildOfClass("Tool")
+				local holding = tool and tool.Name == NR_TOOL_NAME
+				local cooling = (os.clock() - lastUnequipped) <= NR_COOLDOWN
+				if (holding or cooling) and track.Priority == Enum.AnimationPriority.Action then
+					track:Stop()
+				end
+			end))
+		end
+		table.insert(nrConns, character.ChildAdded:Connect(function(child)
+			if noReloadOn and child:IsA("Tool") and child.Name == NR_TOOL_NAME then
+				noReloadSound:Play()
+			end
+		end))
+		table.insert(nrConns, character.ChildRemoved:Connect(function(child)
+			if child:IsA("Tool") and child.Name == NR_TOOL_NAME then
+				lastUnequipped = os.clock()
+				if noReloadOn then noReloadSound:Play() end
+			end
+		end))
+	end)
+end
+if LocalPlayer.Character then setupNoReload(LocalPlayer.Character) end
+connect(LocalPlayer.CharacterAdded, setupNoReload)
+
+-- BUTTON EDITOR: move / resize the on-screen game buttons (jump, emote, hotbar, chat, move stick), with 3 save slots.
+-- Nothing runs while you are not editing except one tiny check twice a second that keeps your layout in place.
+BtnEdit = { editing = false, selected = "jump", data = {}, orig = {}, slot = 1, handles = {}, onSelect = nil }
+local CoreGuiService = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+
+local function pathFind(root, ...)
+	local o = root
+	for _, n in ipairs({ ... }) do
+		if not o then return nil end
+		local ok, r = pcall(function() return o:FindFirstChild(n) end)
+		o = ok and r or nil
+	end
+	return o
+end
+
+local emoteCache = nil
+local function scanEmote()
+	if emoteCache and emoteCache.Parent then return end
+	emoteCache = nil
+	local ok, list = pcall(function() return CoreGuiService:GetDescendants() end)
+	if not ok then return end
+	local best
+	for i, o in ipairs(list) do
+		if i % 1500 == 0 then task.wait() end -- spread the search out so it never hitches
+		if o:IsA("GuiObject") and o.Visible and string.find(string.lower(o.Name), "emote", 1, true) then
+			local s = o.AbsoluteSize
+			if s.X >= 20 and s.X <= 300 and s.Y >= 20 and s.Y <= 300 then
+				if o:IsA("GuiButton") then best = o break end
+				best = best or o
+			end
+		end
+	end
+	emoteCache = best
+end
+
+BtnEdit.targets = {
+	{ key = "jump", name = "JUMP", find = function()
+		return pathFind(LocalPlayer:FindFirstChild("PlayerGui"), "TouchGui", "TouchControlFrame", "JumpButton") end },
+	{ key = "emote", name = "EMOTE", find = function() return emoteCache end },
+	{ key = "hotbar", name = "HOTBAR", find = function()
+		return pathFind(CoreGuiService, "RobloxGui", "Backpack", "Hotbar") end },
+	{ key = "chat", name = "CHAT", find = function()
+		return pathFind(CoreGuiService, "ExperienceChat", "appLayout") end },
+	{ key = "stick", name = "STICK", find = function()
+		return pathFind(LocalPlayer:FindFirstChild("PlayerGui"), "TouchGui", "TouchControlFrame", "ThumbstickFrame") end },
+}
+
+local function targetObj(key)
+	for _, t in ipairs(BtnEdit.targets) do
+		if t.key == key then
+			local ok, o = pcall(t.find)
+			if ok and typeof(o) == "Instance" and o.Parent and o:IsA("GuiObject") then return o end
+			return nil
+		end
+	end
+end
+
+local function rootOf(o)
+	local p = o
+	while p and not p:IsA("ScreenGui") do p = p.Parent end
+	return p
+end
+
+local function scaleOf(o)
+	local u = o:FindFirstChild("VestaBtnScale")
+	if not u then
+		u = Instance.new("UIScale")
+		u.Name = "VestaBtnScale"
+		u.Parent = o
+	end
+	return u
+end
+
+local function rememberOrig(key, o)
+	local old = BtnEdit.orig[key]
+	if not old or old.obj ~= o then
+		BtnEdit.orig[key] = { obj = o, pos = o.Position }
+	end
+end
+
+-- puts the button's CENTRE at (d.x, d.y) (fractions of the screen) and its size at d.s (x original size).
+-- Only differences between positions are used, so the top-bar inset can never throw it off.
+local function placeTarget(o, d)
+	local root = rootOf(o)
+	if not root then return end
+	local us = scaleOf(o)
+	local cur = (us.Scale > 0) and us.Scale or 1
+	local curSize = o.AbsoluteSize
+	local newSize = curSize / cur * d.s
+	local a = o.AnchorPoint
+	local rs = root.AbsoluteSize
+	local C = Vector2.new(d.x * rs.X, d.y * rs.Y)
+	local pCur = o.AbsolutePosition + Vector2.new(a.X * curSize.X, a.Y * curSize.Y)
+	local pNew = C - Vector2.new((0.5 - a.X) * newSize.X, (0.5 - a.Y) * newSize.Y)
+	local delta = pNew - pCur
+	us.Scale = d.s
+	local p = o.Position
+	o.Position = UDim2.new(p.X.Scale, p.X.Offset + delta.X, p.Y.Scale, p.Y.Offset + delta.Y)
+end
+
+local function ensureData(key, o)
+	local d = BtnEdit.data[key]
+	if not d then
+		rememberOrig(key, o)
+		local root = rootOf(o)
+		local rs = root and root.AbsoluteSize or Vector2.new(1, 1)
+		local c = o.AbsolutePosition + o.AbsoluteSize / 2
+		local us = o:FindFirstChild("VestaBtnScale")
+		d = { x = c.X / math.max(rs.X, 1), y = c.Y / math.max(rs.Y, 1), s = us and us.Scale or 1 }
+		BtnEdit.data[key] = d
+	end
+	return d
+end
+
+local function resetKey(key)
+	local o = targetObj(key)
+	local orig = BtnEdit.orig[key]
+	if o then
+		if orig and orig.obj == o then o.Position = orig.pos end
+		local us = o:FindFirstChild("VestaBtnScale")
+		if us then us:Destroy() end
+	end
+	BtnEdit.data[key] = nil
+	BtnEdit.orig[key] = nil
+end
+
+function BtnEdit.resetSelected() resetKey(BtnEdit.selected) end
+function BtnEdit.resetAll()
+	for _, t in ipairs(BtnEdit.targets) do resetKey(t.key) end
+end
+
+function BtnEdit.select(key)
+	BtnEdit.selected = key
+	if BtnEdit.onSelect then BtnEdit.onSelect(key) end
+end
+
+function BtnEdit.resize(step)
+	local o = targetObj(BtnEdit.selected)
+	if not o then return nil end
+	local d = ensureData(BtnEdit.selected, o)
+	d.s = math.clamp(math.floor((d.s + step) * 10 + 0.5) / 10, 0.4, 2.5)
+	placeTarget(o, d)
+	return d.s
+end
+
+function BtnEdit.sizeOf(key)
+	local d = BtnEdit.data[key]
+	return d and d.s or 1
+end
+
+-- keeps your layout in place if the game moves a button back (respawn, rotating the screen, ...)
+do
+	local acc = 0
+	connect(RunService.Heartbeat, function(dt)
+		acc += dt
+		if acc < 0.5 then return end
+		acc = 0
+		if BtnEdit.editing or not next(BtnEdit.data) then return end
+		if BtnEdit.data.emote and not emoteCache then task.spawn(scanEmote) end
+		for key, d in pairs(BtnEdit.data) do
+			local o = targetObj(key)
+			local root = o and rootOf(o)
+			if o and root then
+				local us = o:FindFirstChild("VestaBtnScale")
+				local rs = root.AbsoluteSize
+				local c = o.AbsolutePosition + o.AbsoluteSize / 2
+				local off = (c - Vector2.new(d.x * rs.X, d.y * rs.Y)).Magnitude
+				if off > 2 or not us or math.abs(us.Scale - d.s) > 0.01 then
+					rememberOrig(key, o)
+					pcall(placeTarget, o, d)
+				end
+			end
+		end
+	end)
+end
+
+-- saving / loading (3 slots; files if your executor can write them, otherwise kept until you leave the game)
+local function slotFile(n) return "VestaButtons_" .. n .. ".json" end
+
+function BtnEdit.save(n)
+	local out = {}
+	for k, d in pairs(BtnEdit.data) do out[k] = { x = d.x, y = d.y, s = d.s } end
+	local ok, enc = pcall(function() return HttpService:JSONEncode(out) end)
+	if not ok then return false end
+	env.VestaButtonConfigs = env.VestaButtonConfigs or {}
+	env.VestaButtonConfigs[n] = enc
+	if writefile then
+		pcall(writefile, slotFile(n), enc)
+		pcall(writefile, "VestaButtons_last.txt", tostring(n))
+	end
+	BtnEdit.slot = n
+	return true
+end
+
+function BtnEdit.load(n)
+	local raw
+	if readfile and isfile then
+		local ok, r = pcall(function()
+			if isfile(slotFile(n)) then return readfile(slotFile(n)) end
+		end)
+		if ok and type(r) == "string" then raw = r end
+	end
+	raw = raw or (env.VestaButtonConfigs and env.VestaButtonConfigs[n])
+	if type(raw) ~= "string" then return false end
+	local ok, dec = pcall(function() return HttpService:JSONDecode(raw) end)
+	if not ok or type(dec) ~= "table" then return false end
+	BtnEdit.resetAll()
+	for _, t in ipairs(BtnEdit.targets) do
+		local d = dec[t.key]
+		if type(d) == "table" and type(d.x) == "number" and type(d.y) == "number" and type(d.s) == "number" then
+			BtnEdit.data[t.key] = { x = math.clamp(d.x, 0, 1), y = math.clamp(d.y, 0, 1), s = math.clamp(d.s, 0.4, 2.5) }
+		end
+	end
+	if BtnEdit.data.emote then task.spawn(scanEmote) end
+	for key, d in pairs(BtnEdit.data) do
+		local o = targetObj(key)
+		if o then
+			rememberOrig(key, o)
+			pcall(placeTarget, o, d)
+		end
+	end
+	BtnEdit.slot = n
+	return true
+end
+
+-- the edit overlay: one draggable box over every button that exists
+local editorGui, editorConn
+local editConns = {}
+local function econnect(signal, fn)
+	local c = signal:Connect(fn)
+	table.insert(editConns, c)
+	return c
+end
+local function pointerAbs(input)
+	if input.UserInputType == Enum.UserInputType.Touch then
+		return Vector2.new(input.Position.X, input.Position.Y)
+	end
+	local m = UserInputService:GetMouseLocation()
+	local inset = GuiService:GetGuiInset()
+	return Vector2.new(m.X - inset.X, m.Y - inset.Y)
+end
+
+function BtnEdit.stop()
+	BtnEdit.editing = false
+	BtnEdit.drag = nil
+	if editorConn then editorConn:Disconnect() editorConn = nil end
+	for _, c in ipairs(editConns) do pcall(function() c:Disconnect() end) end
+	editConns = {}
+	if editorGui then editorGui:Destroy() editorGui = nil end
+	BtnEdit.handles = {}
+end
+
+function BtnEdit.start()
+	if BtnEdit.editing then return end
+	BtnEdit.editing = true
+	task.spawn(scanEmote)
+	editorGui = Instance.new("ScreenGui")
+	editorGui.Name = "VestaButtonEditor"
+	editorGui.ResetOnSpawn = false
+	editorGui.IgnoreGuiInset = true
+	editorGui.DisplayOrder = 10000
+	local ok = pcall(function() editorGui.Parent = (gethui and gethui()) or CoreGuiService end)
+	if not ok or not editorGui.Parent then editorGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+	for _, t in ipairs(BtnEdit.targets) do
+		local h = Instance.new("Frame")
+		h.Name = t.key
+		h.BackgroundColor3 = Color3.new(1, 1, 1)
+		h.BackgroundTransparency = 0.8
+		h.BorderSizePixel = 0
+		h.Active = true
+		h.Visible = false
+		h.Parent = editorGui
+		Instance.new("UICorner", h).CornerRadius = UDim.new(0, 8)
+		local st = Instance.new("UIStroke")
+		st.Thickness = 2
+		st.Color = Color3.new(1, 1, 1)
+		st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		st.Parent = h
+		local tl = Instance.new("TextLabel")
+		tl.BackgroundTransparency = 1
+		tl.Size = UDim2.new(1, 0, 0, 14)
+		tl.Position = UDim2.new(0, 0, 0, -16)
+		tl.Font = BUBBLY_FONT
+		tl.TextSize = 12
+		tl.TextColor3 = Color3.new(1, 1, 1)
+		tl.TextStrokeTransparency = 0.3
+		tl.Text = t.name
+		tl.Parent = h
+		BtnEdit.handles[t.key] = { f = h, s = st }
+
+		h.InputBegan:Connect(function(input)
+			local ut = input.UserInputType
+			if ut ~= Enum.UserInputType.MouseButton1 and ut ~= Enum.UserInputType.Touch then return end
+			local o = targetObj(t.key)
+			if not o then return end
+			BtnEdit.select(t.key)
+			local d = ensureData(t.key, o)
+			BtnEdit.drag = { key = t.key, o = o, start = pointerAbs(input), pos = o.Position, d = d }
+		end)
+	end
+
+	econnect(UserInputService.InputChanged, function(input)
+		local dr = BtnEdit.drag
+		if not dr then return end
+		local ut = input.UserInputType
+		if ut ~= Enum.UserInputType.MouseMovement and ut ~= Enum.UserInputType.Touch then return end
+		if not dr.o.Parent then BtnEdit.drag = nil return end
+		local delta = pointerAbs(input) - dr.start
+		dr.o.Position = dr.pos + UDim2.fromOffset(delta.X, delta.Y)
+	end)
+	econnect(UserInputService.InputEnded, function(input)
+		local dr = BtnEdit.drag
+		if not dr then return end
+		local ut = input.UserInputType
+		if ut ~= Enum.UserInputType.MouseButton1 and ut ~= Enum.UserInputType.Touch then return end
+		BtnEdit.drag = nil
+		task.delay(0.1, function() -- read the final spot once the layout has settled
+			local o = dr.o
+			local root = o.Parent and rootOf(o)
+			if root then
+				local rs = root.AbsoluteSize
+				local c = o.AbsolutePosition + o.AbsoluteSize / 2
+				dr.d.x = math.clamp(c.X / math.max(rs.X, 1), 0, 1)
+				dr.d.y = math.clamp(c.Y / math.max(rs.Y, 1), 0, 1)
+			end
+		end)
+	end)
+
+	editorConn = RunService.RenderStepped:Connect(function()
+		local inset = GuiService:GetGuiInset()
+		for _, t in ipairs(BtnEdit.targets) do
+			local hd = BtnEdit.handles[t.key]
+			local o = hd and targetObj(t.key)
+			if o and o.Visible and o.AbsoluteSize.X > 2 then
+				local root = rootOf(o)
+				local off = (root and not root.IgnoreGuiInset) and inset or Vector2.zero
+				local p, s = o.AbsolutePosition + off, o.AbsoluteSize
+				hd.f.Visible = true
+				hd.f.Position = UDim2.fromOffset(p.X, p.Y)
+				hd.f.Size = UDim2.fromOffset(math.max(s.X, 30), math.max(s.Y, 30))
+				local sel = (BtnEdit.selected == t.key)
+				hd.s.Color = sel and UI.accent or Color3.new(1, 1, 1)
+				hd.s.Thickness = sel and 3 or 1.5
+			else
+				if hd then hd.f.Visible = false end
+			end
+		end
+	end)
+end
+
+-- bring back the layout you used last time (silently, nothing to click)
+task.defer(function()
+	if readfile and isfile then
+		local ok, n = pcall(function()
+			if isfile("VestaButtons_last.txt") then return tonumber(readfile("VestaButtons_last.txt")) end
+		end)
+		if ok and n and n >= 1 and n <= 3 then
+			BtnEdit.slot = n
+			pcall(BtnEdit.load, n)
+		end
+	end
+end)
+end -- end of the wrapped no-reload / button editor block
+
+
 local function buildGui()
 	gui = Instance.new("ScreenGui")
 	gui.Name = "VoidscopeRecolor"
 	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 20000
 	local ok = pcall(function()
 		gui.Parent = (gethui and gethui()) or game:GetService("CoreGui")
 	end)
@@ -3654,7 +4071,7 @@ local function buildGui()
 	list.SortOrder = Enum.SortOrder.LayoutOrder
 
 	local function syncHeight()
-		frame.Size = UDim2.new(0, WIDTH + TABW, 0, math.max(content.AbsoluteSize.Y / GUI_SCALE, 200))
+		frame.Size = UDim2.new(0, WIDTH + TABW, 0, math.max(content.AbsoluteSize.Y / GUI_SCALE, 262))
 	end
 	connect(content:GetPropertyChangedSignal("AbsoluteSize"), syncHeight)
 	task.defer(syncHeight)
@@ -4278,6 +4695,115 @@ local function buildGui()
 
 	-- shared status lines + note + footer + credit (below the page)
 
+
+	-- PAGE 4: BUTTON EDITOR
+	do
+		local bePage, beNext = newPage("buttons")
+		local baseText = {}
+		local function flash(tb, text)
+			baseText[tb] = baseText[tb] or tb.Text
+			tb.Text = text
+			task.delay(1, function()
+				if tb.Parent then tb.Text = baseText[tb] end
+			end)
+		end
+		local function cols(row, i, n, text, fill, onClick)
+			local bg, tb, holder = makeGlassButton(row, i, text, fill, nil, onClick)
+			holder.Size = UDim2.new(1 / n, -(6 * (n - 1)) / n, 1, 0)
+			table.insert(UI.feature, bg)
+			return bg, tb
+		end
+
+		sectionLabel(bePage, beNext, "EDIT ON-SCREEN BUTTONS")
+		local editRow = featureRow(bePage, beNext)
+		local startBg, startTb, stopBg
+		startBg, startTb = cols(editRow, 1, 2, "START EDIT", Color3.fromRGB(0, 105, 190), function()
+			BtnEdit.start()
+			setOutline(startBg, true)
+		end)
+		stopBg = cols(editRow, 2, 2, "STOP EDIT", Color3.fromRGB(125, 30, 30), function()
+			BtnEdit.stop()
+			setOutline(startBg, false)
+		end)
+
+		sectionLabel(bePage, beNext, "EDIT OPTIONS")
+		local pickBgs = {}
+		local sizeTb
+		local function refreshSize()
+			if sizeTb then sizeTb.Text = "SIZE: " .. math.floor(BtnEdit.sizeOf(BtnEdit.selected) * 100 + 0.5) .. "%" end
+		end
+		BtnEdit.onSelect = function(key)
+			for k, bg in pairs(pickBgs) do setOutline(bg, k == key) end
+			refreshSize()
+		end
+		local rows = { featureRow(bePage, beNext), featureRow(bePage, beNext) }
+		for i, t in ipairs(BtnEdit.targets) do
+			local r = (i <= 3) and rows[1] or rows[2]
+			local idx = (i <= 3) and i or (i - 3)
+			pickBgs[t.key] = cols(r, idx, 3, t.name, Color3.fromRGB(84, 84, 100), function() BtnEdit.select(t.key) end)
+		end
+		do
+			local _, tb = cols(rows[2], 3, 3, "RESET THIS", Color3.fromRGB(125, 30, 30), function()
+				BtnEdit.resetSelected()
+				refreshSize()
+			end)
+		end
+		setOutline(pickBgs[BtnEdit.selected], true)
+
+		local sizeRow = featureRow(bePage, beNext)
+		cols(sizeRow, 1, 3, "-  SMALLER", Color3.fromRGB(84, 84, 100), function()
+			BtnEdit.resize(-0.1)
+			refreshSize()
+		end)
+		do
+			local _, tb = cols(sizeRow, 2, 3, "SIZE: 100%", Color3.fromRGB(60, 62, 76), function() end)
+			sizeTb = tb
+		end
+		cols(sizeRow, 3, 3, "BIGGER  +", Color3.fromRGB(84, 84, 100), function()
+			BtnEdit.resize(0.1)
+			refreshSize()
+		end)
+
+		sectionLabel(bePage, beNext, "CONFIGS")
+		local slotRow = featureRow(bePage, beNext)
+		local slotBgs = {}
+		for n = 1, 3 do
+			slotBgs[n] = cols(slotRow, n, 3, "SLOT " .. n, Color3.fromRGB(84, 84, 100), function()
+				BtnEdit.slot = n
+				for k, bg in pairs(slotBgs) do setOutline(bg, k == n) end
+			end)
+		end
+		setOutline(slotBgs[BtnEdit.slot], true)
+		local cfgRow = featureRow(bePage, beNext)
+		do
+			local _, saveTb = cols(cfgRow, 1, 2, "SAVE CONFIG", Color3.fromRGB(0, 120, 90), function() end)
+			local _, loadTb = cols(cfgRow, 2, 2, "LOAD CONFIG", Color3.fromRGB(0, 105, 190), function() end)
+			saveTb.MouseButton1Click:Connect(function()
+				flash(saveTb, BtnEdit.save(BtnEdit.slot) and "SAVED!" or "FAILED")
+			end)
+			loadTb.MouseButton1Click:Connect(function()
+				local ok = BtnEdit.load(BtnEdit.slot)
+				refreshSize()
+				flash(loadTb, ok and "LOADED!" or "NOTHING SAVED")
+			end)
+		end
+		local allRow = featureRow(bePage, beNext)
+		cols(allRow, 1, 1, "RESET ALL BUTTONS", Color3.fromRGB(125, 30, 30), function()
+			BtnEdit.resetAll()
+			refreshSize()
+		end)
+
+		sectionLabel(bePage, beNext, "NO GUN RELOAD ANIMATION")
+		local nrRow = featureRow(bePage, beNext)
+		local ui3 = {}
+		toggleUI[#toggleUI + 1] = ui3
+		ui3.reloadBg, ui3.reloadTb = cols(nrRow, 1, 1, "NO RELOAD ANIM: ON", Color3.fromRGB(78, 80, 92), function()
+			noReloadOn = not noReloadOn
+			updateStatus()
+		end)
+		updateStatus()
+	end
+
 	local footer = Instance.new("Frame")
 	footer.LayoutOrder = nextOrder()
 	footer.Size = UDim2.new(1, 0, 0, 18)
@@ -4336,6 +4862,7 @@ local function buildGui()
 		{ "scopes", "SCOPES" },
 		{ "gingerscope", "GINGERSCOPE" },
 		{ "ui", "UI COLOR" },
+		{ "buttons", "BUTTON EDITOR", true },
 	}
 	for i, def in ipairs(tabDefs) do
 		local key = def[1]
@@ -4346,6 +4873,50 @@ local function buildGui()
 		tb.TextWrapped = true
 		tb.Position = UDim2.new(0, 8, 0, 0)
 		tb.Size = UDim2.new(1, -8, 1, 0)
+		if def[3] then
+			-- settings gear drawn from shapes (so it shows on every executor)
+			tb.Position = UDim2.new(0, 34, 0, 0)
+			tb.Size = UDim2.new(1, -38, 1, 0)
+			local gear = Instance.new("Frame")
+			gear.Name = "Gear"
+			gear.AnchorPoint = Vector2.new(0, 0.5)
+			gear.Position = UDim2.new(0, 11, 0.5, 0)
+			gear.Size = UDim2.new(0, 22, 0, 22)
+			gear.BackgroundTransparency = 1
+			gear.ZIndex = 4
+			gear.Parent = holder
+			for k = 0, 7 do
+				local arm = Instance.new("Frame")
+				arm.AnchorPoint = Vector2.new(0.5, 0.5)
+				arm.Position = UDim2.new(0.5, 0, 0.5, 0)
+				arm.Size = UDim2.new(1, 0, 1, 0)
+				arm.BackgroundTransparency = 1
+				arm.Rotation = k * 45
+				arm.ZIndex = 4
+				arm.Parent = gear
+				local tooth = Instance.new("Frame")
+				tooth.AnchorPoint = Vector2.new(0.5, 0)
+				tooth.Position = UDim2.new(0.5, 0, 0, 0)
+				tooth.Size = UDim2.new(0, 4, 0, 6)
+				tooth.BackgroundColor3 = Color3.new(1, 1, 1)
+				tooth.BorderSizePixel = 0
+				tooth.ZIndex = 4
+				tooth.Parent = arm
+			end
+			local ring = Instance.new("Frame")
+			ring.AnchorPoint = Vector2.new(0.5, 0.5)
+			ring.Position = UDim2.new(0.5, 0, 0.5, 0)
+			ring.Size = UDim2.new(0, 11, 0, 11)
+			ring.BackgroundTransparency = 1
+			ring.ZIndex = 4
+			ring.Parent = gear
+			Instance.new("UICorner", ring).CornerRadius = UDim.new(1, 0)
+			local rs = Instance.new("UIStroke")
+			rs.Color = Color3.new(1, 1, 1)
+			rs.Thickness = 3
+			rs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			rs.Parent = ring
+		end
 		local bar = Instance.new("Frame")
 		bar.Name = "ActiveBar"
 		bar.AnchorPoint = Vector2.new(0, 0.5)
@@ -4452,7 +5023,7 @@ local function buildGui()
 		icon.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 		icon.Font = BUBBLY_FONT
 		icon.Text = "vesta"
-		icon.TextSize = 13
+		icon.TextSize = 20
 		icon.TextColor3 = Color3.fromRGB(215, 218, 228)
 		icon.TextStrokeColor3 = Color3.fromRGB(90, 94, 110)
 		icon.TextStrokeTransparency = 0.4
@@ -4516,8 +5087,9 @@ local function buildGui()
 end
 
 local built, buildErr = pcall(buildGui)
-if not built then
-end
+-- the menu is built: release the loading screen now. Skin pictures keep warming up in the background, and a skin
+-- clicked before its picture is ready swaps in the moment it finishes.
+env.VestaLoadDone = true
 
 -- INSTANT SWITCHING: at start, every skin picture is downloaded into memory at the same time and made ready on
 -- every gun part, so clicking a skin only swaps it in. A click made before a download finishes keeps the current
@@ -4584,6 +5156,9 @@ end
 -- closing the script ONLY removes the menu and stops the live watching. Nothing is reset, so every colour,
 -- texture, glass and see-through effect you applied stays on the gun.
 env.VoidscopeRecolorCleanup = function()
+	pcall(BtnEdit.stop)
+	for _, c in ipairs(nrConns) do pcall(function() c:Disconnect() end) end
+	pcall(function() noReloadSound:Destroy() end)
 	for _, c in ipairs(conns) do
 		pcall(function() c:Disconnect() end)
 	end
