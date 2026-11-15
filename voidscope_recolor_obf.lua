@@ -3483,11 +3483,14 @@ end
 if LocalPlayer.Character then setupNoReload(LocalPlayer.Character) end
 connect(LocalPlayer.CharacterAdded, setupNoReload)
 
--- BUTTON EDITOR: move / resize the on-screen game buttons (jump, emote, hotbar, chat, move stick), with 3 save slots.
--- Nothing runs while you are not editing except one tiny check twice a second that keeps your layout in place.
-BtnEdit = { editing = false, selected = "jump", data = {}, orig = {}, slot = 1, handles = {}, onSelect = nil }
+-- BUTTON EDITOR: tap ANY element on screen (the game's buttons, menus, chat, hotbar... anything) and move, resize or
+-- hide it. 3 save slots. Nothing runs while you are not editing, apart from one tiny check twice a second that keeps
+-- your layout in place.
+BtnEdit = { editing = false, selObj = nil, selKey = nil, data = {}, orig = {}, slot = 1, onSelect = nil, cands = {}, candIdx = 1 }
 local CoreGuiService = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
+local editorGui, editorConn
+local editConns = {}
 
 local function pathFind(root, ...)
 	local o = root
@@ -3519,6 +3522,7 @@ local function scanEmote()
 	emoteCache = best
 end
 
+-- quick-pick shortcuts (you can also just tap the element on screen)
 BtnEdit.targets = {
 	{ key = "jump", name = "JUMP", find = function()
 		return pathFind(LocalPlayer:FindFirstChild("PlayerGui"), "TouchGui", "TouchControlFrame", "JumpButton") end },
@@ -3547,6 +3551,58 @@ local function rootOf(o)
 	return p
 end
 
+-- every element gets a text "address" so it can be found again later (for saved configs)
+local function safeName(n) return (string.gsub(n, "[/#]", "_")) end
+local function pathOf(o)
+	local parts = {}
+	local n = o
+	while n and n.Parent and not n:IsA("PlayerGui") and n ~= CoreGuiService do
+		local par = n.Parent
+		local nm = safeName(n.Name)
+		local k = 0
+		for _, sib in ipairs(par:GetChildren()) do
+			if safeName(sib.Name) == nm then
+				k += 1
+				if sib == n then break end
+			end
+		end
+		table.insert(parts, 1, nm .. "#" .. k)
+		n = par
+	end
+	if not n then return nil end
+	local tag = n:IsA("PlayerGui") and "PG" or (n == CoreGuiService and "CG" or nil)
+	if not tag then return nil end
+	return tag .. "/" .. table.concat(parts, "/")
+end
+
+local function resolve(path)
+	if type(path) ~= "string" then return nil end
+	local tag, rest = string.match(path, "^(%u%u)/(.*)$")
+	local cur = (tag == "PG" and LocalPlayer:FindFirstChild("PlayerGui")) or (tag == "CG" and CoreGuiService) or nil
+	if not cur then return nil end
+	for part in string.gmatch(rest, "[^/]+") do
+		local nm, k = string.match(part, "^(.*)#(%d+)$")
+		k = tonumber(k)
+		if not nm or not k then return nil end
+		local found, count = nil, 0
+		for _, c in ipairs(cur:GetChildren()) do
+			if safeName(c.Name) == nm then
+				count += 1
+				if count == k then found = c break end
+			end
+		end
+		if not found then return nil end
+		cur = found
+	end
+	if typeof(cur) == "Instance" and cur:IsA("GuiObject") then return cur end
+end
+
+local function objFor(key)
+	local ob = BtnEdit.orig[key]
+	if ob and ob.obj and ob.obj.Parent then return ob.obj end
+	return targetObj(key) or resolve(key)
+end
+
 local function scaleOf(o)
 	local u = o:FindFirstChild("VestaBtnScale")
 	if not u then
@@ -3560,11 +3616,11 @@ end
 local function rememberOrig(key, o)
 	local old = BtnEdit.orig[key]
 	if not old or old.obj ~= o then
-		BtnEdit.orig[key] = { obj = o, pos = o.Position }
+		BtnEdit.orig[key] = { obj = o, pos = o.Position, vis = o.Visible }
 	end
 end
 
--- puts the button's CENTRE at (d.x, d.y) (fractions of the screen) and its size at d.s (x original size).
+-- puts the element's CENTRE at (d.x, d.y) (fractions of the screen) and its size at d.s (x original size).
 -- Only differences between positions are used, so the top-bar inset can never throw it off.
 local function placeTarget(o, d)
 	local root = rootOf(o)
@@ -3599,10 +3655,13 @@ local function ensureData(key, o)
 end
 
 local function resetKey(key)
-	local o = targetObj(key)
+	local o = objFor(key)
 	local orig = BtnEdit.orig[key]
 	if o then
-		if orig and orig.obj == o then o.Position = orig.pos end
+		if orig and orig.obj == o then
+			o.Position = orig.pos
+			o.Visible = orig.vis
+		end
 		local us = o:FindFirstChild("VestaBtnScale")
 		if us then us:Destroy() end
 	end
@@ -3610,31 +3669,64 @@ local function resetKey(key)
 	BtnEdit.orig[key] = nil
 end
 
-function BtnEdit.resetSelected() resetKey(BtnEdit.selected) end
-function BtnEdit.resetAll()
-	for _, t in ipairs(BtnEdit.targets) do resetKey(t.key) end
+function BtnEdit.selectObj(o)
+	BtnEdit.selObj = o
+	BtnEdit.selKey = o and pathOf(o) or nil
+	if BtnEdit.onSelect then BtnEdit.onSelect() end
+end
+function BtnEdit.presetObj(key) return targetObj(key) end
+function BtnEdit.selectPreset(key)
+	local o = targetObj(key)
+	if o then BtnEdit.selectObj(o) end
+end
+function BtnEdit.selectParent()
+	local o = BtnEdit.selObj
+	if o and o.Parent and o.Parent:IsA("GuiObject") then BtnEdit.selectObj(o.Parent) end
+end
+function BtnEdit.selectNext()
+	local c = BtnEdit.cands
+	if #c == 0 then return end
+	BtnEdit.candIdx = (BtnEdit.candIdx % #c) + 1
+	BtnEdit.selectObj(c[BtnEdit.candIdx])
 end
 
-function BtnEdit.select(key)
-	BtnEdit.selected = key
-	if BtnEdit.onSelect then BtnEdit.onSelect(key) end
+function BtnEdit.resetSelected()
+	if BtnEdit.selKey then resetKey(BtnEdit.selKey) end
+end
+function BtnEdit.resetAll()
+	local keys = {}
+	for k in pairs(BtnEdit.data) do table.insert(keys, k) end
+	for _, k in ipairs(keys) do resetKey(k) end
 end
 
 function BtnEdit.resize(step)
-	local o = targetObj(BtnEdit.selected)
-	if not o then return nil end
-	local d = ensureData(BtnEdit.selected, o)
-	d.s = math.clamp(math.floor((d.s + step) * 10 + 0.5) / 10, 0.4, 2.5)
+	local o, key = BtnEdit.selObj, BtnEdit.selKey
+	if not o or not o.Parent or not key then return nil end
+	local d = ensureData(key, o)
+	d.s = math.clamp(math.floor((d.s + step) * 10 + 0.5) / 10, 0.2, 4)
 	placeTarget(o, d)
 	return d.s
 end
 
-function BtnEdit.sizeOf(key)
-	local d = BtnEdit.data[key]
-	return d and d.s or 1
+function BtnEdit.toggleHide()
+	local o, key = BtnEdit.selObj, BtnEdit.selKey
+	if not o or not o.Parent or not key then return false end
+	local d = ensureData(key, o)
+	d.h = not d.h
+	o.Visible = not d.h
+	return d.h
 end
 
--- keeps your layout in place if the game moves a button back (respawn, rotating the screen, ...)
+function BtnEdit.sizeOf()
+	local d = BtnEdit.selKey and BtnEdit.data[BtnEdit.selKey]
+	return d and d.s or 1
+end
+function BtnEdit.hiddenNow()
+	local d = BtnEdit.selKey and BtnEdit.data[BtnEdit.selKey]
+	return d and d.h or false
+end
+
+-- keeps your layout in place if the game moves things back (respawn, rotating the screen, ...)
 do
 	local acc = 0
 	connect(RunService.Heartbeat, function(dt)
@@ -3642,9 +3734,9 @@ do
 		if acc < 0.5 then return end
 		acc = 0
 		if BtnEdit.editing or not next(BtnEdit.data) then return end
-		if BtnEdit.data.emote and not emoteCache then task.spawn(scanEmote) end
 		for key, d in pairs(BtnEdit.data) do
-			local o = targetObj(key)
+			if key == "emote" and not emoteCache then task.spawn(scanEmote) end
+			local o = objFor(key)
 			local root = o and rootOf(o)
 			if o and root then
 				local us = o:FindFirstChild("VestaBtnScale")
@@ -3655,6 +3747,7 @@ do
 					rememberOrig(key, o)
 					pcall(placeTarget, o, d)
 				end
+				if d.h and o.Visible then o.Visible = false end
 			end
 		end
 	end)
@@ -3665,7 +3758,7 @@ local function slotFile(n) return "VestaButtons_" .. n .. ".json" end
 
 function BtnEdit.save(n)
 	local out = {}
-	for k, d in pairs(BtnEdit.data) do out[k] = { x = d.x, y = d.y, s = d.s } end
+	for k, d in pairs(BtnEdit.data) do out[k] = { x = d.x, y = d.y, s = d.s, h = d.h and true or false } end
 	local ok, enc = pcall(function() return HttpService:JSONEncode(out) end)
 	if not ok then return false end
 	env.VestaButtonConfigs = env.VestaButtonConfigs or {}
@@ -3691,27 +3784,27 @@ function BtnEdit.load(n)
 	local ok, dec = pcall(function() return HttpService:JSONDecode(raw) end)
 	if not ok or type(dec) ~= "table" then return false end
 	BtnEdit.resetAll()
-	for _, t in ipairs(BtnEdit.targets) do
-		local d = dec[t.key]
-		if type(d) == "table" and type(d.x) == "number" and type(d.y) == "number" and type(d.s) == "number" then
-			BtnEdit.data[t.key] = { x = math.clamp(d.x, 0, 1), y = math.clamp(d.y, 0, 1), s = math.clamp(d.s, 0.4, 2.5) }
+	for key, d in pairs(dec) do
+		if type(key) == "string" and type(d) == "table" and type(d.x) == "number" and type(d.y) == "number"
+			and type(d.s) == "number" then
+			BtnEdit.data[key] = { x = math.clamp(d.x, 0, 1), y = math.clamp(d.y, 0, 1), s = math.clamp(d.s, 0.2, 4),
+				h = d.h == true }
 		end
 	end
 	if BtnEdit.data.emote then task.spawn(scanEmote) end
 	for key, d in pairs(BtnEdit.data) do
-		local o = targetObj(key)
+		local o = objFor(key)
 		if o then
 			rememberOrig(key, o)
 			pcall(placeTarget, o, d)
+			if d.h then o.Visible = false end
 		end
 	end
 	BtnEdit.slot = n
 	return true
 end
 
--- the edit overlay: one draggable box over every button that exists
-local editorGui, editorConn
-local editConns = {}
+-- the edit overlay: a see-through layer that catches your taps, plus a box around the selected element
 local function econnect(signal, fn)
 	local c = signal:Connect(fn)
 	table.insert(editConns, c)
@@ -3725,6 +3818,43 @@ local function pointerAbs(input)
 	local inset = GuiService:GetGuiInset()
 	return Vector2.new(m.X - inset.X, m.Y - inset.Y)
 end
+local function isPress(input)
+	return input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch
+end
+local function ours(o)
+	if editorGui and o:IsDescendantOf(editorGui) then return true end
+	if gui and o:IsDescendantOf(gui) then return true end
+	return false
+end
+
+-- every visible element under a point, top-most first (from both the game's menus and Roblox's own)
+local function collect(pt)
+	local inset = GuiService:GetGuiInset()
+	local screenPt = pt + inset
+	local out, seen = {}, {}
+	local function add(o)
+		if seen[o] then return end
+		seen[o] = true
+		if not o:IsA("GuiObject") or not o.Visible or ours(o) then return end
+		local root = rootOf(o)
+		local off = (root and not root.IgnoreGuiInset) and inset or Vector2.zero
+		local p, s = o.AbsolutePosition + off, o.AbsoluteSize
+		if screenPt.X >= p.X and screenPt.X <= p.X + s.X and screenPt.Y >= p.Y and screenPt.Y <= p.Y + s.Y then
+			table.insert(out, o)
+		end
+	end
+	for _, container in ipairs({ LocalPlayer:FindFirstChild("PlayerGui"), CoreGuiService }) do
+		if container then
+			for _, probe in ipairs({ pt, screenPt }) do
+				local ok, list = pcall(function() return container:GetGuiObjectsAtPosition(probe.X, probe.Y) end)
+				if ok and type(list) == "table" then
+					for _, o in ipairs(list) do add(o) end
+				end
+			end
+		end
+	end
+	return out
+end
 
 function BtnEdit.stop()
 	BtnEdit.editing = false
@@ -3733,7 +3863,6 @@ function BtnEdit.stop()
 	for _, c in ipairs(editConns) do pcall(function() c:Disconnect() end) end
 	editConns = {}
 	if editorGui then editorGui:Destroy() editorGui = nil end
-	BtnEdit.handles = {}
 end
 
 function BtnEdit.start()
@@ -3748,59 +3877,72 @@ function BtnEdit.start()
 	local ok = pcall(function() editorGui.Parent = (gethui and gethui()) or CoreGuiService end)
 	if not ok or not editorGui.Parent then editorGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
-	for _, t in ipairs(BtnEdit.targets) do
-		local h = Instance.new("Frame")
-		h.Name = t.key
-		h.BackgroundColor3 = Color3.new(1, 1, 1)
-		h.BackgroundTransparency = 0.8
-		h.BorderSizePixel = 0
-		h.Active = true
-		h.Visible = false
-		h.Parent = editorGui
-		Instance.new("UICorner", h).CornerRadius = UDim.new(0, 8)
-		local st = Instance.new("UIStroke")
-		st.Thickness = 2
-		st.Color = Color3.new(1, 1, 1)
-		st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		st.Parent = h
-		local tl = Instance.new("TextLabel")
-		tl.BackgroundTransparency = 1
-		tl.Size = UDim2.new(1, 0, 0, 14)
-		tl.Position = UDim2.new(0, 0, 0, -16)
-		tl.Font = BUBBLY_FONT
-		tl.TextSize = 12
-		tl.TextColor3 = Color3.new(1, 1, 1)
-		tl.TextStrokeTransparency = 0.3
-		tl.Text = t.name
-		tl.Parent = h
-		BtnEdit.handles[t.key] = { f = h, s = st }
+	local catcher = Instance.new("Frame")
+	catcher.Name = "Catcher"
+	catcher.Size = UDim2.new(1, 0, 1, 0)
+	catcher.BackgroundTransparency = 1
+	catcher.BorderSizePixel = 0
+	catcher.Active = true
+	catcher.Parent = editorGui
 
-		h.InputBegan:Connect(function(input)
-			local ut = input.UserInputType
-			if ut ~= Enum.UserInputType.MouseButton1 and ut ~= Enum.UserInputType.Touch then return end
-			local o = targetObj(t.key)
-			if not o then return end
-			BtnEdit.select(t.key)
-			local d = ensureData(t.key, o)
-			BtnEdit.drag = { key = t.key, o = o, start = pointerAbs(input), pos = o.Position, d = d }
-		end)
-	end
+	local hl = Instance.new("Frame")
+	hl.Name = "Highlight"
+	hl.BackgroundColor3 = Color3.new(1, 1, 1)
+	hl.BackgroundTransparency = 0.85
+	hl.BorderSizePixel = 0
+	hl.Visible = false
+	hl.Parent = editorGui
+	local hst = Instance.new("UIStroke")
+	hst.Thickness = 2.5
+	hst.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	hst.Parent = hl
+	local hlab = Instance.new("TextLabel")
+	hlab.BackgroundTransparency = 1
+	hlab.Size = UDim2.new(1, 0, 0, 14)
+	hlab.Position = UDim2.new(0, 0, 0, -16)
+	hlab.Font = BUBBLY_FONT
+	hlab.TextSize = 12
+	hlab.TextColor3 = Color3.new(1, 1, 1)
+	hlab.TextStrokeTransparency = 0.3
+	hlab.TextXAlignment = Enum.TextXAlignment.Left
+	hlab.Parent = hl
 
+	catcher.InputBegan:Connect(function(input)
+		if not isPress(input) then return end
+		local pt = pointerAbs(input)
+		local cands = collect(pt)
+		BtnEdit.cands = cands
+		BtnEdit.candIdx = 1
+		local sel, pick = BtnEdit.selObj, nil
+		if sel and sel.Parent then
+			for i, c in ipairs(cands) do
+				if c == sel then pick = sel BtnEdit.candIdx = i break end
+			end
+		end
+		pick = pick or cands[1]
+		if not pick then return end
+		if pick ~= sel then BtnEdit.selectObj(pick) end
+		BtnEdit.drag = { o = pick, key = BtnEdit.selKey, start = pt, pos = pick.Position, moved = false }
+	end)
 	econnect(UserInputService.InputChanged, function(input)
 		local dr = BtnEdit.drag
 		if not dr then return end
 		local ut = input.UserInputType
 		if ut ~= Enum.UserInputType.MouseMovement and ut ~= Enum.UserInputType.Touch then return end
-		if not dr.o.Parent then BtnEdit.drag = nil return end
+		if not dr.o.Parent or not dr.key then BtnEdit.drag = nil return end
 		local delta = pointerAbs(input) - dr.start
+		if not dr.moved then
+			if delta.Magnitude < 4 then return end
+			dr.moved = true
+			dr.d = ensureData(dr.key, dr.o) -- remembers where it started, so RESET can put it back
+		end
 		dr.o.Position = dr.pos + UDim2.fromOffset(delta.X, delta.Y)
 	end)
 	econnect(UserInputService.InputEnded, function(input)
 		local dr = BtnEdit.drag
-		if not dr then return end
-		local ut = input.UserInputType
-		if ut ~= Enum.UserInputType.MouseButton1 and ut ~= Enum.UserInputType.Touch then return end
+		if not dr or not isPress(input) then return end
 		BtnEdit.drag = nil
+		if not dr.moved or not dr.d then return end
 		task.delay(0.1, function() -- read the final spot once the layout has settled
 			local o = dr.o
 			local root = o.Parent and rootOf(o)
@@ -3814,23 +3956,19 @@ function BtnEdit.start()
 	end)
 
 	editorConn = RunService.RenderStepped:Connect(function()
-		local inset = GuiService:GetGuiInset()
-		for _, t in ipairs(BtnEdit.targets) do
-			local hd = BtnEdit.handles[t.key]
-			local o = hd and targetObj(t.key)
-			if o and o.Visible and o.AbsoluteSize.X > 2 then
-				local root = rootOf(o)
-				local off = (root and not root.IgnoreGuiInset) and inset or Vector2.zero
-				local p, s = o.AbsolutePosition + off, o.AbsoluteSize
-				hd.f.Visible = true
-				hd.f.Position = UDim2.fromOffset(p.X, p.Y)
-				hd.f.Size = UDim2.fromOffset(math.max(s.X, 30), math.max(s.Y, 30))
-				local sel = (BtnEdit.selected == t.key)
-				hd.s.Color = sel and UI.accent or Color3.new(1, 1, 1)
-				hd.s.Thickness = sel and 3 or 1.5
-			else
-				if hd then hd.f.Visible = false end
-			end
+		local o = BtnEdit.selObj
+		if o and o.Parent then
+			local root = rootOf(o)
+			local inset = GuiService:GetGuiInset()
+			local off = (root and not root.IgnoreGuiInset) and inset or Vector2.zero
+			local p, s = o.AbsolutePosition + off, o.AbsoluteSize
+			hl.Visible = true
+			hl.Position = UDim2.fromOffset(p.X, p.Y)
+			hl.Size = UDim2.fromOffset(math.max(s.X, 24), math.max(s.Y, 24))
+			hst.Color = UI.accent
+			hlab.Text = o.Name
+		else
+			hl.Visible = false
 		end
 	end)
 end
@@ -3928,15 +4066,25 @@ do
 	-- Gears keep their main code in a server Script, which never runs on your side. This reads that code with your
 	-- executor (decompile) and runs it locally, as if it were a LocalScript, so the gear behaves on your screen.
 	GearKit.runScripts = true
-	GearKit.canRun = (type(decompile) == "function") and (type(loadstring) == "function") and (type(setfenv) == "function")
+	GearKit.canRun = (type(loadstring) == "function") and (type(setfenv) == "function")
 	local baseEnv = getfenv(1)
 	local function runLocally(tool)
 		if not GearKit.canRun then return end
 		for _, sc in ipairs(tool:GetDescendants()) do
 			if sc.ClassName == "Script" then
 				task.spawn(function()
-					local ok, src = pcall(decompile, sc)
-					if not ok or type(src) ~= "string" or #src < 5 then return end
+					local src
+					local ok1, v1 = pcall(function() return sc.Source end)
+					if ok1 and type(v1) == "string" and #v1 > 5 then src = v1 end
+					if not src and type(gethiddenproperty) == "function" then
+						local ok2, v2 = pcall(gethiddenproperty, sc, "Source")
+						if ok2 and type(v2) == "string" and #v2 > 5 then src = v2 end
+					end
+					if not src and type(decompile) == "function" then
+						local ok3, v3 = pcall(decompile, sc)
+						if ok3 and type(v3) == "string" and #v3 > 5 then src = v3 end
+					end
+					if not src then return end
 					local f = loadstring(src)
 					if type(f) ~= "function" then return end
 					pcall(setfenv, f, setmetatable({ script = sc }, { __index = baseEnv }))
@@ -3975,7 +4123,12 @@ do
 						if o ~= tool then pcall(function() o:Destroy() end) end
 					end
 				end
-				if GearKit.runScripts then runLocally(tool) end
+				if GearKit.runScripts then
+					runLocally(tool)
+					for _, d in ipairs(tool:GetDescendants()) do
+						if d.ClassName == "LocalScript" and d.Disabled then pcall(function() d.Disabled = false end) end
+					end
+				end
 				if done then done(true, GearKit.runScripts and not GearKit.canRun) end
 			else
 				if done then done(false) end
@@ -4918,10 +5071,10 @@ local function buildGui()
 			return bg, tb
 		end
 
-		sectionLabel(bePage, beNext, "EDIT ON-SCREEN BUTTONS")
+		sectionLabel(bePage, beNext, "EDIT ANY ON-SCREEN ELEMENT")
 		local editRow = featureRow(bePage, beNext)
-		local startBg, startTb, stopBg
-		startBg, startTb = cols(editRow, 1, 2, "START EDIT", Color3.fromRGB(0, 105, 190), function()
+		local startBg, stopBg
+		startBg = cols(editRow, 1, 2, "START EDIT", Color3.fromRGB(0, 105, 190), function()
 			BtnEdit.start()
 			setOutline(startBg, true)
 		end)
@@ -4929,35 +5082,37 @@ local function buildGui()
 			BtnEdit.stop()
 			setOutline(startBg, false)
 		end)
+		local hint = label(bePage, beNext(), "Press START EDIT, then tap anything on screen and drag it.", 12,
+			Color3.fromRGB(175, 175, 195), 28)
+		hint.Font = BUBBLY_FONT
 
 		sectionLabel(bePage, beNext, "EDIT OPTIONS")
+		local sizeTb, hideTb
 		local pickBgs = {}
-		local sizeTb
-		local function refreshSize()
-			if sizeTb then sizeTb.Text = "SIZE: " .. math.floor(BtnEdit.sizeOf(BtnEdit.selected) * 100 + 0.5) .. "%" end
+		local function refresh()
+			if sizeTb then sizeTb.Text = "SIZE: " .. math.floor(BtnEdit.sizeOf() * 100 + 0.5) .. "%" end
+			if hideTb then hideTb.Text = BtnEdit.hiddenNow() and "SHOW IT" or "HIDE IT" end
+			for k, bg in pairs(pickBgs) do
+				setOutline(bg, BtnEdit.selObj ~= nil and BtnEdit.presetObj(k) == BtnEdit.selObj)
+			end
 		end
-		BtnEdit.onSelect = function(key)
-			for k, bg in pairs(pickBgs) do setOutline(bg, k == key) end
-			refreshSize()
-		end
-		local rows = { featureRow(bePage, beNext), featureRow(bePage, beNext) }
-		for i, t in ipairs(BtnEdit.targets) do
-			local r = (i <= 3) and rows[1] or rows[2]
-			local idx = (i <= 3) and i or (i - 3)
-			pickBgs[t.key] = cols(r, idx, 3, t.name, Color3.fromRGB(84, 84, 100), function() BtnEdit.select(t.key) end)
-		end
+		BtnEdit.onSelect = refresh
+
+		local selRow = featureRow(bePage, beNext)
+		cols(selRow, 1, 3, "PARENT", Color3.fromRGB(84, 84, 100), function() BtnEdit.selectParent() end)
+		cols(selRow, 2, 3, "NEXT UNDER", Color3.fromRGB(84, 84, 100), function() BtnEdit.selectNext() end)
 		do
-			local _, tb = cols(rows[2], 3, 3, "RESET THIS", Color3.fromRGB(125, 30, 30), function()
-				BtnEdit.resetSelected()
-				refreshSize()
+			local _, tb = cols(selRow, 3, 3, "HIDE IT", Color3.fromRGB(84, 84, 100), function()
+				BtnEdit.toggleHide()
+				refresh()
 			end)
+			hideTb = tb
 		end
-		setOutline(pickBgs[BtnEdit.selected], true)
 
 		local sizeRow = featureRow(bePage, beNext)
 		cols(sizeRow, 1, 3, "-  SMALLER", Color3.fromRGB(84, 84, 100), function()
 			BtnEdit.resize(-0.1)
-			refreshSize()
+			refresh()
 		end)
 		do
 			local _, tb = cols(sizeRow, 2, 3, "SIZE: 100%", Color3.fromRGB(60, 62, 76), function() end)
@@ -4965,8 +5120,28 @@ local function buildGui()
 		end
 		cols(sizeRow, 3, 3, "BIGGER  +", Color3.fromRGB(84, 84, 100), function()
 			BtnEdit.resize(0.1)
-			refreshSize()
+			refresh()
 		end)
+
+		local rstRow = featureRow(bePage, beNext)
+		cols(rstRow, 1, 2, "RESET THIS", Color3.fromRGB(125, 30, 30), function()
+			BtnEdit.resetSelected()
+			refresh()
+		end)
+		cols(rstRow, 2, 2, "RESET ALL", Color3.fromRGB(125, 30, 30), function()
+			BtnEdit.resetAll()
+			refresh()
+		end)
+
+		sectionLabel(bePage, beNext, "QUICK PICK")
+		local rows = { featureRow(bePage, beNext), featureRow(bePage, beNext) }
+		for i, t in ipairs(BtnEdit.targets) do
+			local r = (i <= 3) and rows[1] or rows[2]
+			local idx = (i <= 3) and i or (i - 3)
+			pickBgs[t.key] = cols(r, idx, (i <= 3) and 3 or 2, t.name, Color3.fromRGB(84, 84, 100), function()
+				BtnEdit.selectPreset(t.key)
+			end)
+		end
 
 		sectionLabel(bePage, beNext, "CONFIGS")
 		local slotRow = featureRow(bePage, beNext)
@@ -4987,15 +5162,10 @@ local function buildGui()
 			end)
 			loadTb.MouseButton1Click:Connect(function()
 				local ok = BtnEdit.load(BtnEdit.slot)
-				refreshSize()
+				refresh()
 				flash(loadTb, ok and "LOADED!" or "NOTHING SAVED")
 			end)
 		end
-		local allRow = featureRow(bePage, beNext)
-		cols(allRow, 1, 1, "RESET ALL BUTTONS", Color3.fromRGB(125, 30, 30), function()
-			BtnEdit.resetAll()
-			refreshSize()
-		end)
 
 		sectionLabel(bePage, beNext, "NO GUN RELOAD ANIMATION")
 		local nrRow = featureRow(bePage, beNext)
@@ -5007,7 +5177,6 @@ local function buildGui()
 		end)
 		updateStatus()
 	end
-
 
 	-- PAGE 5: GEARS
 	do
