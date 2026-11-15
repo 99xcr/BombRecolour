@@ -3288,7 +3288,7 @@ local function setOutline(bg, on)
 	end
 end
 
-local noReloadOn, BtnEdit, nrConns, noReloadSound -- filled in by the blocks further down
+local noReloadOn, BtnEdit, nrConns, noReloadSound, GearKit -- filled in by the blocks further down
 local function updateStatus()
 	for _, bar in pairs(UI.tabBars) do
 		if bar.Parent then bar.BackgroundColor3 = UI.accent end
@@ -3845,6 +3845,184 @@ task.defer(function()
 end)
 end -- end of the wrapped no-reload / button editor block
 
+-- GEAR MENU: loads any Roblox gear (tool) by ID, by search, or from a quick-pick list, straight into your backpack.
+-- It is made on YOUR side only, so other players do not see it and server-side effects will not work.
+do
+	local HttpService = game:GetService("HttpService")
+	GearKit = { added = {}, ids = {}, favs = {}, popular = {
+		{ name = "Rocket Launcher", id = 32356064 },
+		{ name = "Exponential Rocket Launcher", id = 90718505 },
+		{ name = "Paintball Pro", id = 172246669 },
+		{ name = "Freeze Ray", id = 26013203 },
+		{ name = "Super Freeze Ray 2011", id = 42845853 },
+		{ name = "Quantum Entangler", id = 72644644 },
+		{ name = "Pirate Cutlass", id = 10910681 },
+		{ name = "Midnight Sword", id = 160198658 },
+		{ name = "Bombastic Katana", id = 255800577 },
+		{ name = "Black Hole Sword", id = 1340206957 },
+		{ name = "Double-Bladed Scythe", id = 517827255 },
+		{ name = "Jade Katana", id = 21294489 },
+		{ name = "Dragon Slayers Sword and Shield", id = 73232803 },
+		{ name = "Katana of the Golden Snake", id = 435116927 },
+		{ name = "Staff of Neverending Frost", id = 66896601 },
+		{ name = "Dual Venomshanks", id = 158069180 },
+		{ name = "Orinthian Winged Jet Pack", id = 359178822 },
+		{ name = "Personal Rocketship", id = 298085284 },
+		{ name = "Ridable Raptor", id = 190094270 },
+		{ name = "Midnight Motorcycle", id = 359179120 },
+		{ name = "Blue Speedster", id = 346687565 },
+		{ name = "Korblox Ice Dragon", id = 395205954 },
+		{ name = "Teapot Launcher", id = 1760404984 },
+		{ name = "Candy Cane Bow", id = 569676258 },
+		{ name = "8-Bit Ninja Stars", id = 3459932051 },
+		{ name = "Atomizer", id = 35293856 },
+		{ name = "Orbital Violin Strike", id = 183665698 },
+		{ name = "Cherry Pie", id = 40493590 }
+	} }
+
+	local FAV_FILE = "VestaGearFavs.json"
+	function GearKit.saveFavs()
+		local ok, enc = pcall(function() return HttpService:JSONEncode(GearKit.favs) end)
+		if not ok then return end
+		env.VestaGearFavs = enc
+		if writefile then pcall(writefile, FAV_FILE, enc) end
+	end
+	do
+		local raw = env.VestaGearFavs
+		if readfile and isfile then
+			local ok, r = pcall(function() if isfile(FAV_FILE) then return readfile(FAV_FILE) end end)
+			if ok and type(r) == "string" then raw = r end
+		end
+		if type(raw) == "string" then
+			local ok, dec = pcall(function() return HttpService:JSONDecode(raw) end)
+			if ok and type(dec) == "table" then
+				for _, e in ipairs(dec) do
+					if type(e) == "table" and tonumber(e.id) then
+						table.insert(GearKit.favs, { name = tostring(e.name or ("Gear " .. e.id)), id = tonumber(e.id) })
+					end
+				end
+			end
+		end
+	end
+
+	function GearKit.isFav(id)
+		for _, e in ipairs(GearKit.favs) do if e.id == id then return true end end
+		return false
+	end
+	function GearKit.addFav(e)
+		if GearKit.isFav(e.id) then return end
+		table.insert(GearKit.favs, { name = e.name, id = e.id })
+		GearKit.saveFavs()
+	end
+	function GearKit.removeFav(id)
+		for i, e in ipairs(GearKit.favs) do
+			if e.id == id then table.remove(GearKit.favs, i) break end
+		end
+		GearKit.saveFavs()
+	end
+
+	-- puts the gear in your backpack. done(true/false) is called when finished.
+	function GearKit.give(id, done, again)
+		id = tonumber(id)
+		if not id then
+			if done then done(false) end
+			return
+		end
+		task.spawn(function()
+			local ok, objs = pcall(function() return game:GetObjects("rbxassetid://" .. id) end)
+			local tool
+			if ok and type(objs) == "table" then
+				for _, o in ipairs(objs) do
+					if o:IsA("Tool") then tool = o break end
+					local f = o:FindFirstChildWhichIsA("Tool", true)
+					if f then tool = f break end
+				end
+			end
+			local bp = LocalPlayer:FindFirstChildOfClass("Backpack") or LocalPlayer:WaitForChild("Backpack", 5)
+			if tool and bp then
+				tool.Parent = bp
+				if not again then
+					table.insert(GearKit.added, tool)
+					table.insert(GearKit.ids, id)
+				end
+				if type(objs) == "table" then
+					for _, o in ipairs(objs) do
+						if o ~= tool then pcall(function() o:Destroy() end) end
+					end
+				end
+				if done then done(true) end
+			else
+				if done then done(false) end
+			end
+		end)
+	end
+
+	function GearKit.removeAll()
+		for _, t in ipairs(GearKit.added) do pcall(function() t:Destroy() end) end
+		GearKit.added = {}
+		GearKit.ids = {}
+	end
+
+	-- gears you added come back after you respawn
+	connect(LocalPlayer.CharacterAdded, function()
+		if #GearKit.ids == 0 then return end
+		task.delay(1.5, function()
+			GearKit.added = {}
+			for _, id in ipairs(GearKit.ids) do GearKit.give(id, nil, true) end
+		end)
+	end)
+
+	local function httpGet(url)
+		local req = (syn and syn.request) or (http and http.request) or http_request or request
+			or (fluxus and fluxus.request)
+		if req then
+			local ok, res = pcall(req, { Url = url, Method = "GET" })
+			if ok and type(res) == "table" and type(res.Body) == "string" and (res.StatusCode == nil or res.StatusCode == 200) then
+				return res.Body
+			end
+		end
+		local ok, body = pcall(function() return game:HttpGet(url) end)
+		if ok and type(body) == "string" then return body end
+	end
+
+	-- searches Roblox's gear catalog. done(list) with { {name=, id=}, ... }, or done(nil) if the search could not be reached
+	function GearKit.search(query, done)
+		task.spawn(function()
+			local q = HttpService:UrlEncode(query)
+			local out, reached = {}, false
+			local body = httpGet("https://catalog.roblox.com/v1/search/items/details?Category=11&Subcategory=5&Keyword="
+				.. q .. "&Limit=30&IncludeNotForSale=true")
+			if body then
+				local ok, dec = pcall(function() return HttpService:JSONDecode(body) end)
+				if ok and type(dec) == "table" and type(dec.data) == "table" then
+					reached = true
+					for _, it in ipairs(dec.data) do
+						if tonumber(it.id) then
+							table.insert(out, { name = tostring(it.name or ("Gear " .. it.id)), id = tonumber(it.id) })
+						end
+					end
+				end
+			end
+			if #out == 0 then
+				body = httpGet("https://catalog.roblox.com/v1/search/items?category=11&subcategory=5&keyword="
+					.. q .. "&limit=60&includeNotForSale=true")
+				if body then
+					local ok, dec = pcall(function() return HttpService:JSONDecode(body) end)
+					if ok and type(dec) == "table" and type(dec.data) == "table" then
+						reached = true
+						for i, it in ipairs(dec.data) do
+							if tonumber(it.id) and i <= 40 then
+								table.insert(out, { name = "Gear " .. it.id, id = tonumber(it.id) })
+							end
+						end
+					end
+				end
+			end
+			done(reached and out or nil)
+		end)
+	end
+end
+
 
 local function buildGui()
 	gui = Instance.new("ScreenGui")
@@ -4071,7 +4249,7 @@ local function buildGui()
 	list.SortOrder = Enum.SortOrder.LayoutOrder
 
 	local function syncHeight()
-		frame.Size = UDim2.new(0, WIDTH + TABW, 0, math.max(content.AbsoluteSize.Y / GUI_SCALE, 262))
+		frame.Size = UDim2.new(0, WIDTH + TABW, 0, math.max(content.AbsoluteSize.Y / GUI_SCALE, 292))
 	end
 	connect(content:GetPropertyChangedSignal("AbsoluteSize"), syncHeight)
 	task.defer(syncHeight)
@@ -4804,6 +4982,207 @@ local function buildGui()
 		updateStatus()
 	end
 
+
+	-- PAGE 5: GEARS
+	do
+		local gearPage, gearNext = newPage("gears")
+		local gbase = {}
+		local function gflash(tb, text, secs)
+			gbase[tb] = gbase[tb] or tb.Text
+			local keep = gbase[tb]
+			tb.Text = text
+			if secs then
+				task.delay(secs, function()
+					if tb.Parent then tb.Text = keep end
+				end)
+			end
+		end
+		local function gcols(row, i, n, text, fill, onClick)
+			local bg, tb, holder = makeGlassButton(row, i, text, fill, nil, onClick)
+			holder.Size = UDim2.new(1 / n, -(6 * (n - 1)) / n, 1, 0)
+			table.insert(UI.feature, bg)
+			return bg, tb
+		end
+		local function inputRow(placeholder, btnText, fill, onGo)
+			local row = featureRow(gearPage, gearNext)
+			local bh = Instance.new("Frame")
+			bh.LayoutOrder = 1
+			bh.Size = UDim2.new(1, -76, 1, 0)
+			bh.BackgroundColor3 = Color3.new(0, 0, 0)
+			bh.BackgroundTransparency = 0.3
+			bh.BorderSizePixel = 0
+			bh.Parent = row
+			Instance.new("UICorner", bh).CornerRadius = UDim.new(0, 9)
+			local st = Instance.new("UIStroke")
+			st.Color = BUTTON_OUTLINE
+			st.Transparency = 0.45
+			st.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			st.Parent = bh
+			local box = Instance.new("TextBox")
+			box.Position = UDim2.new(0, 8, 0, 0)
+			box.Size = UDim2.new(1, -16, 1, 0)
+			box.BackgroundTransparency = 1
+			box.ClearTextOnFocus = false
+			box.PlaceholderText = placeholder
+			box.PlaceholderColor3 = Color3.fromRGB(150, 150, 165)
+			box.Text = ""
+			box.Font = BUBBLY_FONT
+			box.TextSize = 14
+			box.TextColor3 = Color3.new(1, 1, 1)
+			box.TextXAlignment = Enum.TextXAlignment.Left
+			box.Parent = bh
+			local bg, tb, holder
+			bg, tb, holder = makeGlassButton(row, 2, btnText, fill, nil, function() onGo(box.Text, tb) end)
+			holder.Size = UDim2.new(0, 70, 1, 0)
+			table.insert(UI.feature, bg)
+			box.FocusLost:Connect(function(enter)
+				if enter then onGo(box.Text, tb) end
+			end)
+			return box, tb
+		end
+
+		local source = "popular"
+		local results, searching, searchFailed = {}, false, false
+		local scroll, render
+
+		local function giveWithFeedback(e, tb)
+			gflash(tb, "GETTING...")
+			GearKit.give(e.id, function(ok)
+				gflash(tb, ok and "GOT IT!" or "FAILED", 1.2)
+			end)
+		end
+
+		sectionLabel(gearPage, gearNext, "GET GEAR BY ID")
+		inputRow("paste a gear ID", "GET GEAR", Color3.fromRGB(0, 120, 90), function(text, tb)
+			local id = tonumber((string.gsub(text, "%D", "")))
+			if not id then
+				gflash(tb, "BAD ID", 1)
+				return
+			end
+			giveWithFeedback({ id = id }, tb)
+		end)
+
+		sectionLabel(gearPage, gearNext, "SEARCH GEARS")
+		inputRow("search by name", "SEARCH", Color3.fromRGB(0, 105, 190), function(text)
+			text = string.gsub(text, "^%s+", "")
+			text = string.gsub(text, "%s+$", "")
+			if text == "" then return end
+			source = "results"
+			results, searching, searchFailed = {}, true, false
+			render()
+			GearKit.search(text, function(list)
+				searching = false
+				searchFailed = (list == nil)
+				results = list or {}
+				render()
+			end)
+		end)
+
+		local srcRow = featureRow(gearPage, gearNext)
+		local srcBgs = {}
+		local function setSource(name)
+			source = name
+			for k, bg in pairs(srcBgs) do setOutline(bg, k == name) end
+			render()
+		end
+		srcBgs.popular = gcols(srcRow, 1, 3, "POPULAR", Color3.fromRGB(84, 84, 100), function() setSource("popular") end)
+		srcBgs.favs = gcols(srcRow, 2, 3, "FAVOURITES", Color3.fromRGB(84, 84, 100), function() setSource("favs") end)
+		srcBgs.results = gcols(srcRow, 3, 3, "RESULTS", Color3.fromRGB(84, 84, 100), function() setSource("results") end)
+
+		scroll = Instance.new("ScrollingFrame")
+		scroll.Name = "GearList"
+		scroll.LayoutOrder = gearNext()
+		scroll.Size = UDim2.new(1, 0, 0, 190)
+		scroll.BackgroundColor3 = Color3.new(0, 0, 0)
+		scroll.BackgroundTransparency = 0.3
+		scroll.BorderSizePixel = 0
+		scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+		scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+		scroll.ScrollBarThickness = 4
+		scroll.ScrollBarImageColor3 = Color3.fromRGB(150, 154, 170)
+		scroll.Parent = gearPage
+		Instance.new("UICorner", scroll).CornerRadius = UDim.new(0, 10)
+		local sst = Instance.new("UIStroke")
+		sst.Color = BUTTON_OUTLINE
+		sst.Transparency = 0.45
+		sst.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		sst.Parent = scroll
+		local sp = Instance.new("UIPadding", scroll)
+		sp.PaddingTop = UDim.new(0, 5)
+		sp.PaddingBottom = UDim.new(0, 5)
+		sp.PaddingLeft = UDim.new(0, 5)
+		sp.PaddingRight = UDim.new(0, 9)
+		local sl = Instance.new("UIListLayout", scroll)
+		sl.Padding = UDim.new(0, 4)
+		sl.SortOrder = Enum.SortOrder.LayoutOrder
+
+		local function message(text)
+			local l = Instance.new("TextLabel")
+			l.Size = UDim2.new(1, 0, 0, 60)
+			l.BackgroundTransparency = 1
+			l.Font = BUBBLY_FONT
+			l.TextSize = 14
+			l.TextWrapped = true
+			l.TextColor3 = Color3.fromRGB(190, 190, 205)
+			l.Text = text
+			l.Parent = scroll
+		end
+
+		render = function()
+			for _, c in ipairs(scroll:GetChildren()) do
+				if c:IsA("Frame") or c:IsA("TextLabel") then c:Destroy() end
+			end
+			local list = (source == "popular") and GearKit.popular or (source == "favs") and GearKit.favs or results
+			if #list == 0 then
+				if source == "favs" then
+					message("No favourites yet. Press FAV on any gear to keep it here.")
+				elseif source == "results" then
+					if searching then
+						message("searching...")
+					elseif searchFailed then
+						message("Search could not be reached on this executor. Use GET GEAR BY ID or the POPULAR list.")
+					else
+						message("Nothing found. Try another name, or type something in SEARCH.")
+					end
+				end
+				return
+			end
+			for i, e in ipairs(list) do
+				local row = Instance.new("Frame")
+				row.LayoutOrder = i
+				row.Size = UDim2.new(1, 0, 0, 28)
+				row.BackgroundTransparency = 1
+				row.Parent = scroll
+				local rl = Instance.new("UIListLayout", row)
+				rl.FillDirection = Enum.FillDirection.Horizontal
+				rl.Padding = UDim.new(0, 4)
+				rl.SortOrder = Enum.SortOrder.LayoutOrder
+				local nbg, ntb, nh = makeGlassButton(row, 1, e.name, Color3.fromRGB(84, 84, 100), nil, function() end)
+				nh.Size = UDim2.new(1, -48, 1, 0)
+				table.insert(UI.feature, nbg)
+				ntb.MouseButton1Click:Connect(function() giveWithFeedback(e, ntb) end)
+				local isDel = (source == "favs")
+				local sbg, stb, sh = makeGlassButton(row, 2, isDel and "DEL" or (GearKit.isFav(e.id) and "SAVED" or "FAV"),
+					isDel and Color3.fromRGB(125, 30, 30) or Color3.fromRGB(0, 105, 190), nil, function() end)
+				sh.Size = UDim2.new(0, 44, 1, 0)
+				stb.MouseButton1Click:Connect(function()
+					if isDel then
+						GearKit.removeFav(e.id)
+						render()
+					else
+						GearKit.addFav(e)
+						stb.Text = "SAVED"
+					end
+				end)
+			end
+		end
+		setSource("popular")
+
+		local rmRow = featureRow(gearPage, gearNext)
+		gcols(rmRow, 1, 1, "REMOVE ALL ADDED GEARS", Color3.fromRGB(125, 30, 30), function() GearKit.removeAll() end)
+	end
+
 	local footer = Instance.new("Frame")
 	footer.LayoutOrder = nextOrder()
 	footer.Size = UDim2.new(1, 0, 0, 18)
@@ -4862,6 +5241,7 @@ local function buildGui()
 		{ "scopes", "SCOPES" },
 		{ "gingerscope", "GINGERSCOPE" },
 		{ "ui", "UI COLOR" },
+		{ "gears", "GEARS" },
 		{ "buttons", "BUTTON EDITOR", true },
 	}
 	for i, def in ipairs(tabDefs) do
@@ -4869,7 +5249,7 @@ local function buildGui()
 		local bg, tb, holder = makeGlassButton(sidebar, i, def[2], Color3.fromRGB(84, 84, 100), nil, function()
 			showTab(key)
 		end)
-		holder.Size = UDim2.new(1, 0, 0, 52)
+		holder.Size = UDim2.new(1, 0, 0, 46)
 		tb.TextWrapped = true
 		tb.Position = UDim2.new(0, 8, 0, 0)
 		tb.Size = UDim2.new(1, -8, 1, 0)
